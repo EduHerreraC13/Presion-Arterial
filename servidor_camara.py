@@ -28,69 +28,118 @@ PUBLIC_ASSETS = frozenset({
     '/heamon_i18n.js', '/favicon.ico',
 })
 
+def _pulse_candidate(ts, rgb, fs):
+    """CHROM por región, con calidad espectral y dos mitades concordantes."""
+    grid = np.arange(ts[0], ts[-1], 1.0 / fs)
+    if len(grid) < int(15 * fs):
+        return None
+    interp = np.column_stack([np.interp(grid, ts, rgb[:, j]) for j in range(3)])
+    base = np.mean(interp, axis=0)
+    if np.min(base) < 28 or np.max(base) > 235 or np.std(interp, axis=0).max() > 32:
+        return None
+    norm = interp / (base + 1e-9) - 1
+    x = 3 * norm[:, 0] - 2 * norm[:, 1]
+    y = 1.5 * norm[:, 0] + norm[:, 1] - 1.5 * norm[:, 2]
+    pulse = x - np.std(x) / (np.std(y) + 1e-9) * y
+    if np.std(pulse) < 1e-7:
+        return None
+    sos = butter(3, [0.72, 2.95], btype='bandpass', fs=fs, output='sos')
+    pulse = sosfiltfilt(sos, pulse)
+    pulse = (pulse - np.mean(pulse)) / (np.std(pulse) + 1e-9)
+    # Periodograma con zero-padding: la interpolación no añade información,
+    # pero evita la cuantización en saltos grandes por bins de FFT.
+    def spectrum(z):
+        nfft = max(4096, 2 ** int(np.ceil(np.log2(len(z) * 4))))
+        f = np.fft.rfftfreq(nfft, 1.0 / fs)
+        p = np.abs(np.fft.rfft((z - np.mean(z)) * np.hanning(len(z)), n=nfft)) ** 2
+        valid = (f >= 0.75) & (f <= 2.95)
+        indexes = np.flatnonzero(valid)
+        idx = indexes[int(np.argmax(p[valid]))]
+        # Energía relativa en una banda estrecha alrededor del candidato.
+        concentration = float(p[(f >= f[idx]-0.12) & (f <= f[idx]+0.12)].sum() / (p[valid].sum()+1e-12))
+        background = float(np.median(p[valid])) + 1e-12
+        snr = float(10 * np.log10((p[idx] + 1e-12) / background))
+        return float(f[idx]*60.0), concentration, snr
+    recent = pulse[-min(len(pulse), int(24 * fs)):]
+    bpm, fraction, snr = spectrum(recent)
+    # Si las mitades discrepan, no ocultamos el problema con suavizado.
+    mid = len(recent) // 2
+    a, _, _ = spectrum(recent[:mid])
+    b, _, _ = spectrum(recent[mid:])
+    if abs(a-b) > 13:
+        return None
+    if fraction < 0.16 or snr < 4:
+        return None
+    return {'bpm': bpm, 'peak_fraction': fraction, 'snr_db': snr, 'pulse': pulse}
+
+
 def infer(data):
     ts = np.asarray(data.get('timestamps', []), float)
     rgb = np.asarray(data.get('rgb', []), float)
-    if ts.ndim != 1 or rgb.ndim != 2 or rgb.shape[1:] != (3,) or len(ts) != len(rgb) or len(ts) < 90 or len(ts) > 1500:
-        raise ValueError('Se necesitan entre 90 y 1500 muestras RGB con marcas temporales')
+    if ts.ndim != 1 or rgb.ndim != 2 or rgb.shape[1:] != (3,) or len(ts) != len(rgb) or not 90 <= len(ts) <= 1500:
+        raise ValueError('Se necesitan 90–1500 muestras RGB con marcas temporales')
     if not np.isfinite(ts).all() or not np.isfinite(rgb).all() or np.any(np.diff(ts) <= 0):
-        raise ValueError('Tiempos y señales deben ser finitos y ordenados')
+        raise ValueError('Señales o tiempos no válidos')
     elapsed = float(ts[-1] - ts[0])
-    if elapsed < 7 or elapsed > 100:
-        raise ValueError('Ventana temporal fuera de 7–100 segundos')
-    fs_real = (len(ts)-1)/elapsed
-    minimum_fps = 7.0 if LOW_FPS_MODE else 12.0
-    if fs_real < minimum_fps or fs_real > 90:
-        return {'status': 'no_evaluable', 'reason': f'Muestreo insuficiente/inusual ({fs_real:.1f} fps; mínimo {minimum_fps:.0f})', 'bpm': None, 'sbp': None, 'dbp': None, 'fps': round(fs_real,1)}
-    # Resampling alone cannot recover dropped frames: reject severe time gaps.
+    if not 17.5 <= elapsed <= 100:
+        return {'status':'calibrating','reason':'Calibrando: se requieren al menos 18 segundos continuos de señal útil','bpm':None,'sbp':None,'dbp':None}
+    fps = (len(ts) - 1) / elapsed
+    minimum = 7 if LOW_FPS_MODE else 12
+    if fps < minimum or fps > 90:
+        return {'status':'no_evaluable','reason':f'FPS insuficientes o anómalos: {fps:.1f}','bpm':None,'sbp':None,'dbp':None,'fps':round(fps,1)}
     intervals = np.diff(ts)
-    if np.max(intervals) > max(0.5, 4.0 * float(np.median(intervals))):
-        return {'status': 'no_evaluable', 'reason': 'Captura interrumpida o irregular: hay saltos temporales grandes', 'bpm': None, 'sbp': None, 'dbp': None, 'fps': round(fs_real,1)}
-    low_fps = fs_real < 12
-    if low_fps and elapsed < 12:
-        return {'status': 'no_evaluable', 'reason': 'Modo FPS bajo: se requieren al menos 12 segundos de señal', 'bpm': None, 'sbp': None, 'dbp': None, 'fps': round(fs_real,1)}
-    fs = float(FS_MODEL)
-    tgrid = np.arange(ts[0], ts[-1], 1/fs)
-    # CHROM utiliza combinaciones de canales normalizados para reducir artefactos comunes.
-    interp = np.column_stack([np.interp(tgrid, ts, rgb[:,j]) for j in range(3)])
-    base = np.mean(interp, axis=0)
-    if np.min(base) < 8 or np.max(base) > 248:
-        return {'status':'no_evaluable','reason':'Iluminación insuficiente o saturación RGB','bpm':None,'sbp':None,'dbp':None}
-    norm = interp/(base + 1e-9)-1
-    X = 3*norm[:,0]-2*norm[:,1]
-    Y = 1.5*norm[:,0]+norm[:,1]-1.5*norm[:,2]
-    pulse = X - (np.std(X)/(np.std(Y)+1e-9))*Y
-    sos = butter(3, [0.7,3.0], btype='bandpass', fs=fs, output='sos')
-    pulse = sosfiltfilt(sos,pulse)
-    pulse = (pulse - np.mean(pulse))/(np.std(pulse)+1e-9)
-    # Se analiza la mitad final para priorizar señal reciente.
-    n = min(len(pulse), int(15*fs))
-    y = pulse[-n:]
-    freq = np.fft.rfftfreq(n, 1/fs)
-    power = abs(np.fft.rfft(y * np.hanning(n)))**2
-    valid = (freq>=0.75)&(freq<=3.)
-    if not np.any(valid) or not np.isfinite(power).all():
-        raise ValueError('Espectro no válido')
-    idx = np.where(valid)[0][int(np.argmax(power[valid]))]
-    peak_frac = float(power[max(idx-1,0):idx+2].sum()/(power[valid].sum()+1e-12))
-    bpm = float(freq[idx]*60)
-    if peak_frac < 0.18:
-        return {'status':'no_evaluable','reason':'Pico pulsátil demasiado débil/ambiguo', 'bpm':None,'sbp':None,'dbp':None,'peak_fraction':round(peak_frac,3),'fps':round(fs_real,1)}
-    caution = ('LOW FPS MODE (experimental): ~8 FPS; BP inference is NOT validated and can be unreliable. ' if low_fps else '')
-    result={'status':'experimental_low_fps' if low_fps else 'experimental','reason':caution+'Estimación rPPG no validada; no utilizar clínicamente',
-        'bpm':round(bpm,1),'peak_fraction':round(peak_frac,3),'fps':round(fs_real,1),
-        'seconds':round(elapsed,1),'low_fps':low_fps,'sbp':None,'dbp':None,'bp_status':MODEL_STATUS,
-        'waveform':np.round(pulse[-min(len(pulse),240):],3).tolist(), 'model_loaded':MODEL is not None}
+    if np.max(intervals) > max(0.5, 4 * float(np.median(intervals))):
+        return {'status':'no_evaluable','reason':'Fotogramas discontinuos: recalibrando','bpm':None,'sbp':None,'dbp':None,'fps':round(fps,1)}
+    # Opcionalmente tres señales independientes, conservando compatibilidad API.
+    rois = data.get('rois') or {}
+    if rois and (not isinstance(rois, dict) or len(rois)>3):
+        raise ValueError('Regiones inválidas')
+    traces = {'forehead': rgb}
+    for name in ('left_cheek', 'right_cheek'):
+        if name in rois:
+            a=np.asarray(rois[name],float)
+            if a.shape != rgb.shape or not np.isfinite(a).all():
+                raise ValueError('Señal RGB por región inválida')
+            traces[name]=a
+    fs=float(FS_MODEL)
+    candidates=[]
+    for name, trace in traces.items():
+        result=_pulse_candidate(ts,trace,fs)
+        if result is not None:
+            result['name']=name
+            candidates.append(result)
+    if len(traces) > 1:
+        # Consenso: no basta con un pico espurio fuerte de una sola región.
+        groups = [[c for c in candidates if abs(c['bpm']-anchor['bpm'])<=9] for anchor in candidates]
+        agreed=max(groups,key=len) if groups else []
+        if len(agreed) < 2:
+            return {'status':'no_evaluable','reason':'Calibrando: frente y pómulos no concuerdan; revisa luz y movimiento','bpm':None,'sbp':None,'dbp':None,'fps':round(fps,1),'roi_count':len(candidates)}
+    else:
+        agreed=candidates
+    if not agreed:
+        return {'status':'no_evaluable','reason':'Señal pulsátil no fiable; mantente quieto e ilumina el rostro','bpm':None,'sbp':None,'dbp':None,'fps':round(fps,1)}
+    weights=np.array([max(c['snr_db'],1.0) for c in agreed])
+    candidate_bpm=float(np.average([c['bpm'] for c in agreed],weights=weights))
+    # Preferimos la región con mejor señal para el LSTM; NO pasamos BPM suavizado.
+    chosen=max(agreed,key=lambda c:c['snr_db']+10*c['peak_fraction'])
+    pulse=chosen['pulse']
+    low=fps<12
+    result={'status':'experimental_low_fps' if low else 'experimental',
+            'reason':'Consenso entre regiones; medición experimental no validada',
+            'bpm':round(candidate_bpm,1),'peak_fraction':round(float(np.mean([c['peak_fraction'] for c in agreed])),3),
+            'fps':round(fps,1),'seconds':round(elapsed,1),'roi_count':len(agreed),
+            'snr_db':round(float(np.mean([c['snr_db'] for c in agreed])),1),
+            'low_fps':low,'sbp':None,'dbp':None,'bp_status':MODEL_STATUS,
+            'waveform':np.round(pulse[-min(len(pulse),240):],3).tolist(), 'model_loaded':MODEL is not None}
     if MODEL is not None:
         try:
-            sbp,dbp=MODEL.predict_pulse(pulse[-int(7*fs):], fs)
-            # Nunca etiquetar como lectura real o usar reglas clínicas.
-            if all(map(math.isfinite,(sbp,dbp))) and 30 < dbp < 180 and 50 < sbp < 280 and sbp > dbp:
-                result.update(sbp=round(sbp,1),dbp=round(dbp,1),bp_status=('LOW FPS ~8: NO VALIDADO, ALTA INCERTIDUMBRE · ' if low_fps else '')+'DL experimental PPG→rPPG · NO ES UNA MEDICIÓN')
+            sbp, dbp=MODEL.predict_pulse(pulse[-int(7*fs):], fs)
+            if all(map(math.isfinite,(sbp,dbp))) and 30<dbp<180 and 50<sbp<280 and sbp>dbp:
+                result.update(sbp=round(sbp,1),dbp=round(dbp,1),bp_status='DL experimental PPG→rPPG, SIN VALIDACIÓN CLÍNICA')
             else:
-                result['bp_status']='La inferencia DL devolvió valores implausibles: se ocultaron'
-        except Exception as e:
-            result['bp_status']=f'Fallo de inferencia experimental: {e}'
+                result['bp_status']='Inferencia DL implausible: se oculta'
+        except Exception as exc:
+            result['bp_status']=f'Inferencia DL no disponible: {exc}'
     return result
 
 class Handler(SimpleHTTPRequestHandler):
