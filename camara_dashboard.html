@@ -24,7 +24,9 @@
 import {FaceLandmarker,FilesetResolver} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 const $=id=>document.getElementById(id);const video=$('video'),canvas=$('overlay'),ctx=canvas.getContext('2d'),scratch=document.createElement('canvas'),sc=scratch.getContext('2d',{willReadFrequently:true});
 let model=null,stream=null,on=false,lastFrame=-1,lastSample=0,lastPost=0,busy=false,samples=[],generation=0;
-const TARGET_SECONDS=20,WINDOW_SECONDS=30,MIN_SAMPLES=135;
+let trackedFace=null,lastDetection=0,lastValid=0,validFrames=0,rejectedFrames=0;
+const TARGET_SECONDS=14,WINDOW_SECONDS=25,MIN_SAMPLES=120;
+const DETECT_INTERVAL_MS=170,SAMPLE_INTERVAL_MS=36;
 let lastAccepted=null,pending=null,lastResultTime=0,invalidStreak=0;
 const uiWords=[
  ['Calibrando · señal no fiable','Calibrating · unreliable signal'],
@@ -51,49 +53,89 @@ const uiWords=[
  ['Comprobando la calidad y estabilidad de la señal antes de publicar resultados.','Checking signal quality and stability before publishing results.'],
  ['No se pudo iniciar:','Unable to start:'],['No se pudo completar el análisis del servidor:','Server analysis could not be completed:'],
  ['Muestreo efectivo:','Effective sampling:'],['Regiones concordantes:','Agreeing regions:'],
+ ['Frente ampliada y pómulos','Expanded forehead and cheeks'],
+ ['Esperando señal fiable','Waiting for a reliable signal'],
+ ['Muestras aceptadas:','Accepted frames:'],['Muestras rechazadas:','Rejected frames:'],
+ ['Preparando primer resultado','Preparing first result'],
+ ['Se han reunido los fotogramas. Analizando la frecuencia cardíaca; esto puede tardar.','Frames collected. Analyzing heart rate; this may take time.'],
+ ['Medición anterior; esperando nueva señal válida.','Previous reading; awaiting a new valid signal.'],
  ];
 function localized(s){if(window.HEAMONi18n?.language!=='en')return s;for(const [es,en] of uiWords)s=s.replaceAll(es,en);return s;}
 const status=s=>$('status').textContent=localized(s);
 const stage=(s,detail='')=>{$('stage').textContent=localized(s);if(detail)status(detail);};
 
 const resetResults=()=>{lastAccepted=null;pending=null;lastResultTime=0;invalidStreak=0;$('bpm').textContent='—';$('sbp').textContent='No disp.';$('dbp').textContent='No disp.';$('quality').textContent='—';};
-function invalidate(reason){invalidStreak++;pending=null;if(invalidStreak>=3||Date.now()-lastResultTime>12000){$('bpm').textContent='—';$('sbp').textContent='No disp.';$('dbp').textContent='No disp.';lastAccepted=null;}stage('Calibrando · señal no fiable',reason+' Se esperan fotogramas de mejor calidad.');}
+function invalidate(reason){invalidStreak++;pending=null;if(invalidStreak>=3||Date.now()-lastResultTime>12000){$('bpm').textContent='—';$('sbp').textContent='No disp.';$('dbp').textContent='No disp.';lastAccepted=null;}stage('Esperando señal fiable',reason+' Se esperan fotogramas de mejor calidad.');}
 async function setup(){const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');model=await FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'CPU'},runningMode:'VIDEO',numFaces:1});}
-$('start').onclick=async()=>{const g=++generation;$('start').disabled=true;stage('Inicializando cámara','Cargando detector facial y solicitando permisos…');try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];lastSample=0;lastPost=0;resetResults();$('stop').disabled=false;stage('Calibrando · 0 %','Detectando frente y ambos pómulos. Mantente inmóvil y evita sombras.');requestAnimationFrame(loop);}catch(e){stage('Error de cámara','No se pudo iniciar: '+e.message);$('start').disabled=false;}};
+$('start').onclick=async()=>{const g=++generation;$('start').disabled=true;stage('Inicializando cámara','Cargando detector facial y solicitando permisos…');try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];lastSample=0;lastPost=0;lastDetection=0;trackedFace=null;validFrames=0;rejectedFrames=0;resetResults();$('stop').disabled=false;stage('Calibrando · 0 %','Detectando frente y ambos pómulos. Mantente inmóvil y evita sombras.');requestAnimationFrame(loop);}catch(e){stage('Error de cámara','No se pudo iniciar: '+e.message);$('start').disabled=false;}};
 $('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];resetResults();ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';stage('Monitor detenido','La medición se detuvo.');};
-// ROI con landmarks del mismo FaceLandmarker, sin dependencias adicionales.
-// Cada región se mantiene independiente para descartar picos falsos.
-function regionMean(face,ids,radiusScale){
+// Polígono frontal equivalente al FaceMeshROI de VitaSense: no es un círculo.
+// Suavizar landmarks permite capturar RGB entre detecciones faciales caras.
+const FOREHEAD=[103,67,109,10,338,297,332,300,293,334,296,336,9,107,66,105,63,70];
+function inPolygon(x,y,pts){let inside=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+ const xi=pts[i].x,yi=pts[i].y,xj=pts[j].x,yj=pts[j].y;
+ if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)inside=!inside;
+}return inside;}
+function faceRegion(face,kind){
  const W=canvas.width,H=canvas.height;
- const pts=ids.map(i=>({x:face[i].x*W,y:face[i].y*H}));
- const cx=pts.reduce((a,p)=>a+p.x,0)/pts.length,cy=pts.reduce((a,p)=>a+p.y,0)/pts.length;
- const faceW=Math.hypot((face[234].x-face[454].x)*W,(face[234].y-face[454].y)*H);
- const radius=Math.max(5,faceW*radiusScale),rx=radius,ry=radius*.85;
- const x0=Math.max(0,Math.floor(cx-rx)),y0=Math.max(0,Math.floor(cy-ry));
- const w=Math.min(W-x0,Math.ceil(rx*2)),h=Math.min(H-y0,Math.ceil(ry*2));
- if(w<12||h<10)return null;
- // Limitar la copia a 48x40 píxeles por ROI reduce la carga de CPU.
- scratch.width=Math.min(48,w);scratch.height=Math.min(40,h);
+ const pt=id=>({x:face[id].x*W,y:face[id].y*H});
+ if(kind==='forehead')return FOREHEAD.map(pt);
+ const ids=kind==='left_cheek'?[50,205]:[280,425];
+ const a=pt(ids[0]),b=pt(ids[1]);const center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+ const fw=Math.hypot((face[234].x-face[454].x)*W,(face[234].y-face[454].y)*H);
+ const rx=Math.max(6,.09*fw),ry=rx*.88;
+ return Array.from({length:20},(_,i)=>({x:center.x+rx*Math.cos(2*Math.PI*i/20),y:center.y+ry*Math.sin(2*Math.PI*i/20)}));
+}
+function regionMean(poly){
+ const W=canvas.width,H=canvas.height;
+ const x0=Math.max(0,Math.floor(Math.min(...poly.map(a=>a.x))));
+ const y0=Math.max(0,Math.floor(Math.min(...poly.map(a=>a.y))));
+ const x1=Math.min(W,Math.ceil(Math.max(...poly.map(a=>a.x))));
+ const y1=Math.min(H,Math.ceil(Math.max(...poly.map(a=>a.y))));
+ const w=x1-x0,h=y1-y0;if(w<12||h<10)return null;
+ // Submuestreo espacial; usar el interior del polígono, no su caja completa.
+ scratch.width=Math.min(72,w);scratch.height=Math.min(52,h);
  sc.drawImage(video,x0,y0,w,h,0,0,scratch.width,scratch.height);
- const pix=sc.getImageData(0,0,scratch.width,scratch.height).data, rgb=[0,0,0];let n=0,sat=0;
+ const pix=sc.getImageData(0,0,scratch.width,scratch.height).data;
+ let rgb=[0,0,0],n=0,clipped=0;
  for(let iy=0;iy<scratch.height;iy+=2)for(let ix=0;ix<scratch.width;ix+=2){
-  const nx=(ix/scratch.width-.5)*2,ny=(iy/scratch.height-.5)*2;if(nx*nx+ny*ny>0.68)continue;
+  const px=x0+(ix+.5)*w/scratch.width,py=y0+(iy+.5)*h/scratch.height;
+  if(!inPolygon(px,py,poly))continue;
   const j=(iy*scratch.width+ix)*4,r=pix[j],g=pix[j+1],b=pix[j+2];
-  if(Math.max(r,g,b)>248||Math.min(r,g,b)<12){sat++;continue;}
+  if(Math.max(r,g,b)>249||Math.min(r,g,b)<10){clipped++;continue;}
   rgb[0]+=r;rgb[1]+=g;rgb[2]+=b;n++;
  }
- if(n<35||sat/(n+sat+1)>0.16)return null;
- rgb.forEach((v,i)=>rgb[i]=v/n);
- ctx.strokeStyle='#7fd3cb';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);ctx.stroke();
- return rgb;
+ if(n<45||clipped/(n+clipped+1)>.22)return null;
+ return rgb.map(v=>v/n);
+}
+function paintROI(poly,kind){
+ ctx.strokeStyle=kind==='forehead'?'#7fd3cb':'#a6d7fa';ctx.lineWidth=2;
+ ctx.fillStyle=kind==='forehead'?'rgba(127,211,203,.11)':'rgba(166,215,250,.09)';
+ ctx.beginPath();poly.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fill();ctx.stroke();
+}
+function updateTrackedFace(now){
+ if(now-lastDetection<DETECT_INTERVAL_MS && trackedFace)return trackedFace;
+ lastDetection=now;
+ let landmarks=null;try{landmarks=model.detectForVideo(video,now).faceLandmarks[0];}
+ catch(e){stage('Detector temporalmente no disponible',e.message);return trackedFace;}
+ if(!landmarks){trackedFace=null;return null;}
+ if(trackedFace&&trackedFace.length===landmarks.length){
+  // Movimiento brusco: no usar coordenadas de una cara anterior.
+  const prev=trackedFace[1],next=landmarks[1],fw=Math.abs(landmarks[454].x-landmarks[234].x);
+  const motion=Math.hypot(prev.x-next.x,prev.y-next.y)/Math.max(fw,.01);
+  if(motion>.07){trackedFace=null;samples=[];resetResults();}
+ }
+ trackedFace=trackedFace&&trackedFace.length===landmarks.length?
+  landmarks.map((q,i)=>({x:.60*q.x+.40*trackedFace[i].x,y:.60*q.y+.40*trackedFace[i].y})):landmarks;
+ return trackedFace;
 }
 async function send(){if(busy||samples.length<MIN_SAMPLES)return;busy=true;stage('Analizando señal…','Evaluando la calidad de los últimos fotogramas y la concordancia de las regiones.');const g=generation;try{
  const recent=samples.slice();
  const payload={timestamps:recent.map(x=>x.t),rgb:recent.map(x=>x.forehead),rois:{left_cheek:recent.map(x=>x.left_cheek),right_cheek:recent.map(x=>x.right_cheek)}};
  const resp=await fetch('/api/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
  const r=await resp.json();if(!on||g!==generation)return;
- $('fps').textContent=r.fps?localized('Muestreo efectivo: ')+r.fps+' fps · '+localized('Regiones concordantes: ')+(r.roi_count??'—'):'';
- if(!resp.ok||!Number.isFinite(r.bpm)){invalidate(r.reason||'No se obtuvo señal válida.');$('reason').textContent=r.bp_status||'Los valores se mostrarán cuando haya señal confiable.';return;}
+ $('fps').textContent=(r.fps?localized('Muestreo efectivo: ')+r.fps+' fps · '+localized('Regiones concordantes: ')+(r.roi_count??'—')+' · ':'')+localized('Muestras aceptadas: ')+validFrames+' · '+localized('Muestras rechazadas: ')+rejectedFrames;
+ if(!resp.ok||!Number.isFinite(r.bpm)){invalidate(r.reason||'No se obtuvo señal válida.');$('reason').textContent=r.reason||'Los valores se mostrarán cuando haya señal confiable.';return;}
  invalidStreak=0;
  // Dos ventanas compatibles antes de publicar; un pico aislado no debe mover la pantalla.
  if(lastAccepted && Math.abs(r.bpm-lastAccepted.bpm)>14){
@@ -112,21 +154,32 @@ async function send(){if(busy||samples.length<MIN_SAMPLES)return;busy=true;stage
  if(r.waveform)draw(r.waveform);stage('Monitoreo · señal aceptada','BPM experimental confirmado con ventanas sucesivas. Se actualiza cuando la calidad lo permite.');
  }catch(e){if(on&&g===generation)invalidate('No se pudo completar el análisis del servidor: '+e.message);}finally{busy=false;}}
 function draw(a){const c=$('wave'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);g.strokeStyle='#7fd3cb';g.lineWidth=2;g.beginPath();a.forEach((v,i)=>{const x=10+i/(a.length-1)*(w-20),y=h/2-v*22;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();}
-function loop(now){if(!on)return;requestAnimationFrame(loop);if(video.readyState<2||video.currentTime===lastFrame||now-lastSample<35)return;lastFrame=video.currentTime;lastSample=now;
- let face=null;try{face=model.detectForVideo(video,now).faceLandmarks[0];}catch(e){stage('Detector temporalmente no disponible',e.message);return;}
- ctx.clearRect(0,0,canvas.width,canvas.height);
- if(!face){samples=[];resetResults();$('progress').style.width='0%';stage('Buscando rostro','Colócate de frente a la cámara y mantén iluminación uniforme.');return;}
- const forehead=regionMean(face,[10,67,109,338,297,332],.115);
- const left_cheek=regionMean(face,[50,205],.085);
- const right_cheek=regionMean(face,[280,425],.085);
- if(!forehead||!left_cheek||!right_cheek){samples=[];resetResults();$('progress').style.width='0%';stage('Recalibrando · región deficiente','Asegura que frente y pómulos estén visibles y sin sombras.');return;}
- const t=performance.now()/1000;samples.push({t,forehead,left_cheek,right_cheek});while(samples.length&&samples[0].t<t-WINDOW_SECONDS)samples.shift();
+function loop(now){
+ if(!on)return;requestAnimationFrame(loop);
+ if(video.readyState<2||video.currentTime===lastFrame||now-lastSample<SAMPLE_INTERVAL_MS)return;
+ lastFrame=video.currentTime;lastSample=now;
+ const face=updateTrackedFace(now);ctx.clearRect(0,0,canvas.width,canvas.height);
+ if(!face){if(samples.length){samples=[];resetResults();}trackedFace=null;
+  $('progress').style.width='0%';stage('Buscando rostro','Colócate de frente a la cámara y mantén iluminación uniforme.');return;}
+ const polys={forehead:faceRegion(face,'forehead'),left_cheek:faceRegion(face,'left_cheek'),right_cheek:faceRegion(face,'right_cheek')};
+ Object.entries(polys).forEach(([key,poly])=>paintROI(poly,key));
+ const forehead=regionMean(polys.forehead),left_cheek=regionMean(polys.left_cheek),right_cheek=regionMean(polys.right_cheek);
+ if(!forehead||!left_cheek||!right_cheek){rejectedFrames++;
+  if(now-lastValid>900){samples=[];resetResults();$('progress').style.width='0%';}
+  stage('Recalibrando · región deficiente','Asegura que frente y pómulos estén visibles y sin sombras.');return;}
+ validFrames++;lastValid=now;
+ const t=performance.now()/1000;
+ samples.push({t,forehead,left_cheek,right_cheek});
+ while(samples.length&&samples[0].t<t-WINDOW_SECONDS)samples.shift();
  const duration=samples.at(-1).t-samples[0].t;
- $('progress').style.width=Math.min(duration/TARGET_SECONDS*100,100).toFixed(0)+'%';
- if(duration<TARGET_SECONDS||samples.length<MIN_SAMPLES){stage('Calibrando · '+Math.min(99,Math.round(100*duration/TARGET_SECONDS))+' %','Acumulando '+duration.toFixed(1)+' / '+TARGET_SECONDS+' s de vídeo útil. No es un fallo. Mantente quieto.');return;}
- if(busy)return;
- if(now-lastPost>2800){lastPost=now;send();}
- else if(!lastAccepted){stage('Calibración completada','Comprobando la calidad y estabilidad de la señal antes de publicar resultados.');}
+ const ratio=Math.min(1,duration/TARGET_SECONDS);
+ $('progress').style.width=(ratio*100).toFixed(0)+'%';
+ if(duration<TARGET_SECONDS||samples.length<MIN_SAMPLES){
+  stage('Calibrando · '+Math.min(99,Math.round(100*ratio))+' %',
+   'Acumulando '+duration.toFixed(1)+' / '+TARGET_SECONDS+' s de vídeo útil. No es un fallo. Mantente quieto.');return;}
+ if(busy){stage('Analizando señal…','Se han reunido los fotogramas. Analizando la frecuencia cardíaca; esto puede tardar.');return;}
+ if(now-lastPost>2500){lastPost=now;send();}
+ else if(!lastAccepted){stage('Preparando primer resultado','Se han reunido los fotogramas. Analizando la frecuencia cardíaca; esto puede tardar.');}
 }
 window.addEventListener('message', e => { if(e.origin!==location.origin || e.source!==parent) return; if(e.data?.type==='HEAMON_START'&&!on) $('start').click(); if(e.data?.type==='HEAMON_STOP'&&on) $('stop').click(); });
 </script></body></html>
