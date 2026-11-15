@@ -1,0 +1,37 @@
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Models, downloaded repositories, checkpoints and training outputs
+modelos/
+terceros/
+runs/
+data/
+*.h5
+*.keras
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.npz
+*.mat
+*.npy
+*.mp4
+*.mov
+*.avi
+*.webm
+
+# Personal information, secrets, local configuration
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

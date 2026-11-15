@@ -1,0 +1,4 @@
+# Instalar únicamente si se utilizará el checkpoint real de Schrumpf.
+# Compatibilidad del archivo .h5 legado no garantizada con TensorFlow/Keras modernos.
+tensorflow>=2.15,<2.17
+kapre>=0.3.6,<0.4

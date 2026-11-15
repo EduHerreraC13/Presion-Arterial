@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "presion-arterial"
+version = "0.1.0"
+description = "Investigación: estimación de presión arterial a partir de pulso rPPG con deep learning"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10", "torch>=2.1"]
+
+[tool.setuptools]
+packages = ["presion_arterial"]
+
+[tool.setuptools.package-data]
+presion_arterial = ["web/*.html"]

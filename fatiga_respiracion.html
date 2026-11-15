@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="en" style="visibility:hidden">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0c141e"><title>HEAMON · Monitor visual</title><style>
+:root{--bg:#0c141e;--panel:#14212e;--panel2:#182938;--line:#2b3b4b;--text:#eef4f7;--muted:#a8b9c5;--green:#8ee1cb;--cyan:#8bc8ed;--amber:#f6c979;--red:#fc9292;--accent:#9ad7e8}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{background:var(--bg);color:var(--text);margin:0;font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif}main{max-width:1230px;margin:auto;padding:24px 20px 60px}
+h1{font-size:clamp(1.55rem,2.5vw,2.25rem);margin:0;font-weight:750;letter-spacing:-.035em}h2{font-size:1.05rem;margin:0 0 12px}p{margin:5px 0;color:var(--muted)}.eyebrow{font-size:.75rem;letter-spacing:.14em;color:var(--green);text-transform:uppercase;font-weight:700}.top{display:flex;align-items:start;justify-content:space-between;gap:18px;margin-bottom:22px}.subtitle{color:var(--muted);font-size:.94rem;margin-top:6px;max-width:70ch}.pill{color:var(--green);border:1px solid #4f857b;background:#17332f;padding:6px 10px;border-radius:100px;white-space:nowrap;font-size:.78rem}.panel,.card,.report,.chartbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:17px;box-shadow:none}.primary-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(335px,.8fr);gap:18px;align-items:start}.camera{position:relative;background:#05090d;min-height:340px;aspect-ratio:16/10;border-radius:12px;overflow:hidden}.camera video{display:block;width:100%;height:100%;position:absolute;inset:0;object-fit:cover;transform:scaleX(-1)}.camera canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;transform:scaleX(-1)}.camera-label{position:absolute;top:13px;left:13px;padding:6px 10px;background:#0b1628dc;border:1px solid #41516a;border-radius:9px;pointer-events:none;font-size:.75rem;color:#d3e8f4}.card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.micro{font-size:.78rem;color:var(--muted)}button{border:none;border-radius:10px;padding:11px 15px;background:var(--green);color:#06201c;font:inherit;font-weight:700;cursor:pointer}button.secondary{background:#263a4b;color:var(--text);border:1px solid #374d62}button:disabled{opacity:.48;cursor:not-allowed}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--cyan);outline-offset:3px}.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}.controls .chk{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:.85rem}.status{color:var(--muted);font-size:.85rem;min-height:20px;margin-top:12px}.progress{height:7px;background:#243849;border-radius:100px;overflow:hidden;margin:10px 0 5px}.progress i{display:block;background:var(--cyan);height:100%;width:0;transition:width .2s}.notice{padding:11px 14px;background:#23313c;border:1px solid #4a5360;border-radius:11px;margin-top:14px;font-size:.82rem;color:#d7e1e7}.notice p{margin-top:3px;color:#b7c8d4}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0}.card.metric{padding:15px;min-height:110px;background:#182b39}.label{font-size:.78rem;color:#b1c6d4;display:block}.value{display:block;font-weight:750;font-size:clamp(1.55rem,2.5vw,2rem);line-height:1.2;margin:8px 0 4px;letter-spacing:-.03em}.detail{color:var(--muted);font-size:.76rem}.side{display:grid;gap:12px}.side .panel{padding:14px}.stats{list-style:none;margin:0;padding:0}.stats li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #2b3c4c;color:var(--muted);font-size:.86rem}.stats li:last-child{border:0}.stats strong{color:var(--text);text-align:right}.mins{display:flex;flex-wrap:wrap;gap:8px;list-style:none;padding:0;margin:0}.mins li{background:#0e1d29;border:1px solid var(--line);border-radius:9px;padding:6px 9px;font-size:.79rem;color:var(--muted)}.mins li strong{color:var(--text)}.mins li.cur{border-color:var(--cyan)}.section-head{display:flex;align-items:baseline;justify-content:space-between;margin:30px 0 11px;gap:10px}.section-head p{font-size:.82rem}.chartbox{margin-top:14px}#chart{display:block;width:100%;height:210px;background:#0b1b26;border-radius:10px}.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:.8rem;margin-top:10px}.legend i{display:inline-block;background:var(--green);width:13px;height:3px;border-radius:6px;margin-right:6px;vertical-align:middle}.legend .resp i{background:var(--cyan)}.legend .thr i{background:var(--amber)}.report{margin-top:14px}.report table{width:100%;border-collapse:collapse;font-size:.84rem}.report th,.report td{border-bottom:1px solid #293c4d;padding:8px 7px;text-align:left}.report th{font-size:.75rem;color:var(--muted)}.report .small,.small{font-size:.8rem;color:var(--muted)}.report td.n,.report th.n{text-align:right;white-space:nowrap}.tablewrap{overflow-x:auto}.up{color:var(--green)}.down{color:var(--red)}.flat{color:var(--muted)}.empty{color:var(--muted);font-size:.87rem}.technical{background:#101f2c;border:1px solid var(--line);border-radius:15px;padding:0;margin-top:14px}.technical>summary{padding:15px 17px;font-weight:650;cursor:pointer;list-style:revert}.technical>.inner{padding:0 17px 17px}.technical .panel{box-shadow:none}.technical-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tech-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.tech-metrics .card{padding:12px;min-height:92px}.tech-metrics .value{font-size:1.4rem}.notice-help{margin-top:14px;font-size:.8rem}.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}#hdx-panel:empty{display:none}.report:empty{display:none}@media(max-width:930px){.primary-grid{grid-template-columns:1fr}.camera{min-height:300px}.top{margin-bottom:15px}}@media(max-width:590px){main{padding:16px 12px 45px}.top{display:block}.pill{display:inline-block;margin-top:10px}.cards{gap:8px}.card.metric{min-height:101px;padding:12px}.technical-grid,.tech-metrics{grid-template-columns:1fr 1fr}.camera{min-height:240px;aspect-ratio:4/3}.controls button{flex:1 1 40%}.controls label{width:100%}.panel,.report,.chartbox{padding:13px}}
+</style></head>
+<body>
+<main>
+<header class="top"><div><div class="eyebrow">Monitoreo experimental · Salud espacial</div><h1>HEAMON <span style="color:var(--muted);font-weight:400">/ Fatiga y respiración</span></h1><p class="subtitle">Observación no invasiva de señales oculares y respiratorias con comparación entre ventanas de 30 segundos.</p></div><span class="pill">● Procesamiento local del video</span></header>
+<section class="primary-grid" aria-label="Panel principal">
+<div class="panel"><div class="card-head"><h2 style="margin:0">Cámara y captura</h2><span class="micro">Una persona · de frente · buena iluminación</span></div>
+<div class="camera"><video id="video" playsinline muted></video><canvas id="overlay"></canvas><span class="camera-label">VISTA DE ANÁLISIS</span></div>
+<div class="controls"><button id="btnStart" type="button">Activar cámara</button><button id="btnStop" type="button" class="secondary" disabled>Detener</button><button id="btnAnalyze" type="button" disabled>Iniciar análisis · 30 s</button><button id="btnCancel" type="button" class="secondary" disabled>Cancelar</button></div>
+<div class="controls" style="margin-top:9px"><label class="chk"><input type="checkbox" id="chain"> Repetir análisis automáticamente cada 30 segundos</label></div>
+<div id="status" class="status" role="status" aria-live="polite">Monitor detenido. Activa la cámara para empezar.</div>
+<div class="progress" aria-hidden="true"><i id="prog"></i></div><p id="winText" class="micro">Ventana de análisis: inactiva.</p>
+<div class="notice"><strong>Uso experimental.</strong><p>Las métricas y el índice no diagnostican fatiga ni determinan aptitud para tareas. El video se procesa localmente; MediaPipe y su modelo requieren descarga inicial. La cámara requiere HTTPS o localhost. Historial temporal de esta pestaña.</p></div>
+</div>
+<div class="side">
+<div class="panel"><div class="card-head"><h2 style="margin:0">Señales principales</h2><span class="micro">En vivo / sesión</span></div>
+<div class="cards">
+<div class="card metric"><span class="label">Pestañeos · ventana</span><strong class="value" id="cBlinkWin">—</strong><span class="detail" id="cBlinkWinD">Análisis de 30 s</span></div>
+<div class="card metric"><span class="label">Respiración / minuto</span><strong class="value" id="cResp">—</strong><span class="detail" id="cRespD">Estimación por cámara</span></div>
+<div class="card metric"><span class="label">Cobertura del rostro</span><strong class="value" id="cCov">—</strong><span class="detail">% de tiempo detectado</span></div>
+<div class="card metric"><span class="label">Pestañeos · sesión</span><strong class="value" id="cBlinkTot">0</strong><span class="detail">Acumulado</span></div>
+</div></div>
+<div class="panel"><h2>Preparación de la medición</h2><p id="calText" class="empty">Activa la cámara para calibrar (~10 s). Mantén rostro y torso en cuadro.</p></div>
+<div class="panel"><h2>Estado del monitor</h2><ul class="stats"><li>Tiempo de sesión <strong id="sTime">00:00</strong></li><li>Pestañeos por minuto <strong id="sRate">—</strong></li><li>Región del torso <strong id="sTorso">—</strong></li><li>Fuente respiratoria <strong id="sSrc">—</strong></li></ul></div>
+</div></section>
+<section class="panel" style="margin-top:17px" aria-label="FatigueSense deep learning">
+  <div class="card-head"><h2 style="margin:0">FatigueSense · Redes neuronales preentrenadas</h2><span class="micro">Módulo opcional del servidor local</span></div>
+  <p>Predicciones de ojos y boca por CNN. El puntaje temporal BiGRU requiere historial y el modelo de postura. El conteo de respiraciones de HEAMON se conserva separado.</p>
+  <div class="cards">
+    <div class="card metric"><span class="label">Ojo izquierdo cerrado · CNN</span><strong class="value" id="fsEyeL">—</strong><span class="detail">Probabilidad del clasificador</span></div>
+    <div class="card metric"><span class="label">Ojo derecho cerrado · CNN</span><strong class="value" id="fsEyeR">—</strong><span class="detail">Probabilidad del clasificador</span></div>
+    <div class="card metric"><span class="label">Boca abierta · CNN</span><strong class="value" id="fsMouth">—</strong><span class="detail">No equivale automáticamente a bostezo</span></div>
+    <div class="card metric"><span class="label">Enfoque · BiGRU</span><strong class="value" id="fsFocus">—</strong><span class="detail">Modelo temporal · experimental</span></div>
+  </div>
+  <p id="fsStatus" class="status">Comprobando disponibilidad de FatigueSense…</p>
+  <small>Se envían fotogramas JPEG reducidos exclusivamente al servidor Python local cuando habilitas FatigueSense. No se envían a servicios externos para la inferencia.</small>
+</section>
+<div class="section-head"><div><h2 style="margin:0">Resultado del análisis</h2><p>Índice heurístico y desglose de señales; se muestra al completar la ventana.</p></div></div>
+<section id="hdx-panel" aria-live="polite"></section>
+<section class="chartbox"><div class="card-head"><h2 style="margin:0">Evolución de señales</h2><span class="micro">Últimos 60 segundos</span></div><canvas id="chart" width="1100" height="200"></canvas><div class="legend"><span><i></i>EAR ocular</span><span class="thr"><i></i>Umbral de cierre</span><span class="resp"><i></i>Señal respiratoria experimental</span></div></section>
+<div class="section-head"><div><h2 style="margin:0">Comparación e historial</h2><p>Conserva la tabla detallada y los análisis de esta sesión.</p></div></div>
+<section class="report" id="compare"><h2>Comparación con el análisis anterior</h2><p class="empty">Todavía no hay análisis completados. Activa la cámara e inicia un análisis.</p></section>
+<details class="technical"><summary>Ver historial de análisis</summary><div class="inner"><section class="report" id="history"><h2>Historial de esta sesión</h2><p class="empty">Sin análisis todavía.</p></section></div></details>
+<details class="technical"><summary>Ver métricas avanzadas y diagnóstico técnico</summary><div class="inner"><div class="tech-metrics"><div class="card"><span class="label">Respiraciones · último minuto</span><strong class="value" id="cRespMin">—</strong><span class="detail">Conteo de últimos 60 s</span></div><div class="card"><span class="label">Respiraciones · sesión</span><strong class="value" id="cRespTot">0</strong><span class="detail">Acumulado</span></div><div class="card"><span class="label">Respiraciones · ventana</span><strong class="value" id="cRespWin">—</strong><span class="detail" id="cRespWinD">Ventana 30 s</span></div></div><div class="technical-grid" style="margin-top:12px"><div class="panel"><h2>Señales faciales</h2><ul class="stats"><li>EAR actual <strong id="sEar">—</strong></li><li>Umbral de cierre <strong id="sThr">—</strong></li><li>Inclinación (roll) <strong id="sRoll">—</strong></li></ul></div><div class="panel"><h2>Respiraciones por cada minuto</h2><ul class="mins" id="perMin"><li>Sin datos todavía</li></ul></div></div></div></details>
+<p class="notice-help">HEAMON · Prototipo de investigación. Los umbrales son experimentales y las señales por cámara pueden variar con luz, movimiento, ropa y encuadre. No usar para decisiones médicas u operativas críticas.</p>
+</main>
+<script src="heamon_i18n.js"></script>
+<script>
+/* =====================================================================
+ * HEAMON · módulo de respiración + base ideal + estimación heurística
+ * Índice EXPERIMENTAL con umbrales de demostración. No es un diagnóstico
+ * médico ni un sistema validado. Todo corre local en el navegador.
+ * ===================================================================== */
+(function (global) {
+  'use strict';
+
+  /* -------------------------------------------------------------------
+   * 1) BASE IDEAL INTERNA (curvas de puntaje 0–100 por tramos [valor, puntaje])
+   * ------------------------------------------------------------------- */
+  const DEFS = [
+    { key: 'perclos', label: 'PERCLOS', unit: '%', group: 'ocular', weight: 0.30, dec: 1,
+      ideal: [0, 5], idealTxt: '≤ 5 %',
+      curve: [[0, 100], [5, 100], [7.5, 80], [15, 50], [28, 15], [45, 0]] },
+    { key: 'aecd', label: 'Cierre ocular medio (AECD)', unit: 'ms', group: 'ocular', weight: 0.20, dec: 0,
+      ideal: [80, 200], idealTxt: '80–200 ms',
+      curve: [[0, 100], [200, 100], [260, 80], [400, 50], [600, 15], [900, 0]] },
+    { key: 'blink', label: 'Frecuencia de pestañeo', unit: 'pest./min', group: 'ocular', weight: 0.15, dec: 1,
+      ideal: [10, 20], idealTxt: '10–20 pest./min',
+      curve: [[0, 25], [4, 45], [8, 75], [10, 100], [20, 100], [26, 75], [32, 50], [40, 25], [60, 0]] },
+    { key: 'resp', label: 'Respiración (por vídeo)', unit: 'resp./min', group: 'corporal', weight: 0.15, dec: 1,
+      ideal: [12, 20], idealTxt: '12–20 resp./min',
+      curve: [[0, 10], [4, 20], [8, 50], [10, 80], [12, 100], [20, 100], [24, 80], [30, 50], [40, 20], [60, 0]] },
+    // Dispersión (RMS) de la nariz en distancias entre ojos. Proxy 2D: CALIBRAR con tus datos en reposo.
+    { key: 'head', label: 'Movimiento de cabeza', unit: 'adim.', group: 'corporal', weight: 0.20, dec: 3,
+      ideal: [0, 0.06], idealTxt: '≤ 0.06 (calibrar)',
+      curve: [[0, 100], [0.06, 100], [0.12, 75], [0.20, 50], [0.35, 20], [0.60, 0]] }
+  ];
+
+  const LEVELS = [
+    { key: 'opt',   min: 85, name: 'Óptimo',     fatiga: 'Sin señales', rec: 'Sin señales destacadas en esta ventana. Continúa el monitoreo.' },
+    { key: 'good',  min: 70, name: 'Bueno',      fatiga: 'Leve',        rec: 'Señales leves. Mantén el monitoreo y vigila la tendencia entre análisis.' },
+    { key: 'watch', min: 50, name: 'Vigilancia', fatiga: 'Moderada',    rec: 'Varias señales se alejan de la base ideal. Considera una pausa breve y repetir el análisis.' },
+    { key: 'risk',  min: 25, name: 'Riesgo',     fatiga: 'Alta',        rec: 'Señales marcadas de fatiga/cansancio. Se sugiere descanso y repetir el análisis antes de decisiones operativas.' },
+    { key: 'crit',  min: 0,  name: 'Crítico',    fatiga: 'Severa',      rec: 'Señales muy alejadas de la base ideal. Se sugiere detener la tarea y revisar la captura (luz, encuadre) antes de repetir.' }
+  ];
+
+  const CFG = { minCoverage: 0.70, minComponents: 3, criticalCap: 69, criticalBelow: 25 };
+
+  const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmt = (v, d) => (isNum(v) ? v.toFixed(d) : '—');
+  const median = (a) => {
+    if (!a.length) return 0;
+    const s = a.slice().sort((x, y) => x - y), m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+
+  function interp(curve, x) {
+    if (x <= curve[0][0]) return curve[0][1];
+    const last = curve[curve.length - 1];
+    if (x >= last[0]) return last[1];
+    for (let i = 0; i < curve.length - 1; i++) {
+      const [x1, y1] = curve[i], [x2, y2] = curve[i + 1];
+      if (x >= x1 && x <= x2) return y1 + ((x - x1) * (y2 - y1)) / (x2 - x1);
+    }
+    return last[1];
+  }
+  function interval(curve, s) {
+    let lo = null, hi = null;
+    if (curve[0][1] >= s) lo = curve[0][0];
+    if (curve[curve.length - 1][1] >= s) hi = curve[curve.length - 1][0];
+    for (let i = 0; i < curve.length - 1; i++) {
+      const [x1, y1] = curve[i], [x2, y2] = curve[i + 1];
+      if ((y1 < s && y2 >= s) || (y1 >= s && y2 < s)) {
+        const x = x1 + ((s - y1) * (x2 - x1)) / (y2 - y1);
+        if (y2 > y1) lo = lo === null ? x : Math.min(lo, x);
+        else hi = hi === null ? x : Math.max(hi, x);
+      }
+    }
+    return [lo, hi];
+  }
+  const levelOf = (score) => { for (const l of LEVELS) if (score >= l.min) return l; return LEVELS[LEVELS.length - 1]; };
+  function groupScore(comps, group) {
+    const g = comps.filter((c) => c.group === group);
+    const w = g.reduce((a, c) => a + c.weight, 0);
+    return !g.length || w <= 0 ? null : g.reduce((a, c) => a + c.weight * c.score, 0) / w;
+  }
+
+  /* -------------------------------------------------------------------
+   * 3) ESTIMACIÓN HEURÍSTICA
+   * m = { perclos, aecdMs, blinkRate, respRate (null si no fiable), headMotion, coverage, resp (stats) }
+   * ------------------------------------------------------------------- */
+  function evaluar(m) {
+    m = m || {};
+    const raw = { perclos: m.perclos, aecd: m.aecdMs, blink: m.blinkRate, resp: m.respRate, head: m.headMotion };
+    let cov = isNum(m.coverage) ? m.coverage : null;
+    if (cov !== null && cov > 1) cov = cov / 100;
+    const comps = [], faltantes = [];
+    for (const d of DEFS) {
+      const v = raw[d.key];
+      if (!isNum(v) || v < 0) { faltantes.push(d.label); continue; }
+      const score = interp(d.curve, v);
+      const desv = v < d.ideal[0] ? v - d.ideal[0] : v > d.ideal[1] ? v - d.ideal[1] : 0;
+      comps.push({ key: d.key, label: d.label, unit: d.unit, group: d.group, weight: d.weight, dec: d.dec,
+        value: v, score, deviation: desv, idealTxt: d.idealTxt, level: levelOf(score) });
+    }
+    const out = { comps, faltantes, coverage: cov, usados: comps.length, total: DEFS.length, resp: m.resp || null,
+      score: null, level: null, ocular: null, corporal: null, patron: null, conclusivo: false, motivo: null, escalado: false, recomendacion: null };
+    if (cov === null || cov < CFG.minCoverage) {
+      out.motivo = 'Cobertura facial insuficiente (' + (cov === null ? 'sin dato' : Math.round(cov * 100) + ' %') + '; mínimo ' + Math.round(CFG.minCoverage * 100) + ' %).';
+    } else if (comps.length < CFG.minComponents) {
+      out.motivo = 'Solo ' + comps.length + ' de ' + DEFS.length + ' métricas con datos válidos (mínimo ' + CFG.minComponents + ').';
+    }
+    if (comps.length) {
+      const wSum = comps.reduce((a, c) => a + c.weight, 0);
+      let score = comps.reduce((a, c) => a + c.weight * c.score, 0) / wSum;
+      if (comps.some((c) => c.score < CFG.criticalBelow) && score > CFG.criticalCap) { score = CFG.criticalCap; out.escalado = true; }
+      out.score = score; out.ocular = groupScore(comps, 'ocular'); out.corporal = groupScore(comps, 'corporal');
+    }
+    if (!out.motivo && out.score !== null) {
+      out.conclusivo = true; out.level = levelOf(out.score); out.recomendacion = out.level.rec;
+      const oc = out.ocular !== null && out.ocular < 70, co = out.corporal !== null && out.corporal < 70;
+      out.patron = oc && co ? 'Combinado (ocular + corporal)' : oc ? 'Predomina lo ocular' : co ? 'Predomina activación/movimiento' : 'Sin patrón destacado';
+    }
+    return out;
+  }
+
+  /* -------------------------------------------------------------------
+   * 2) CONTADOR DE RESPIRACIONES (v2)
+   *  - Filtro pasa-banda (quita deriva en 2 pasos + suavizado en 2 pasos).
+   *  - Ganancia automática ROBUSTA: la amplitud típica se toma como la
+   *    mediana de |señal| en los últimos 20 s (no se infla con un
+   *    movimiento brusco y se recupera en ~10 s). Así una respiración
+   *    débil y una fuerte se detectan con el mismo criterio relativo.
+   *  - Un ciclo cuenta cuando la señal baja de −umbral (se "arma") y luego
+   *    cruza hacia arriba por cero. Una 2.ª joroba no vuelve a contar
+   *    porque ya está desarmado; además hay una separación mínima
+   *    adaptativa (45 % del intervalo habitual (máx. 5 s)).
+   *  - Se pausa el conteo 1 s tras un movimiento brusco (blank).
+   *  - Se exige relación señal/ruido mínima para contar.
+   * ------------------------------------------------------------------- */
+  class RespCounter {
+    constructor(opts) {
+      this.o = Object.assign({
+        binMs: 100, hpTau: 8, lpTau: 0.25, ampWinSec: 20, thrFrac: 0.30,
+        minGapMs: 1200, maxGapMs: 5000, gapFrac: 0.45, warmupMs: 8000, jumpAmp: 2, jumpNoise: 8, blankAfterJumpMs: 1500, minSnr: 1.2, maxGapBins: 30
+      }, opts || {});
+      this.reset();
+    }
+    reset() {
+      this.t0 = null; this.binIdx = 0; this.acc = 0; this.n = 0;
+      this.s1 = null; this.s2 = 0; this.f1 = 0; this.f2 = 0; this.fast = 0; this.prevX = null;
+      this.buf = []; this.nbuf = []; this.amp = 0; this.noise = 0; this.snr = 0; this.cnt = 0;
+      this.state = 0; this.warmStart = null; this.segOpen = false; this.segs = []; this.reanchor = false;
+      this.times = []; this.lastEvent = -Infinity; this.blankUntil = -Infinity; this.lastT = null;
+    }
+    get firstValidT() { return this.segs.length ? this.segs[0].a : null; }
+    blank(t, ms) { this.blankUntil = Math.max(this.blankUntil, t + ms); this.state = 0; this.reanchor = true; }
+    push(tMs, v) {
+      if (!isNum(tMs) || !isNum(v)) return;
+      if (this.t0 === null) { this.t0 = tMs; this.binIdx = 0; }
+      const idx = Math.floor((tMs - this.t0) / this.o.binMs);
+      if (idx < this.binIdx) return;
+      if (idx === this.binIdx) { this.acc += v; this.n++; return; }
+      if (this.n > 0) this._step(this.acc / this.n, this.t0 + (this.binIdx + 1) * this.o.binMs);
+      if (idx - this.binIdx > this.o.maxGapBins) { this.s1 = null; this.state = 0; this.segOpen = false; this.prevX = null; }
+      this.binIdx = idx; this.acc = v; this.n = 1;
+    }
+    _step(x, t) {
+      const o = this.o, dt = o.binMs / 1000;
+      const aS = 1 - Math.exp(-dt / o.hpTau), aL = 1 - Math.exp(-dt / o.lpTau);
+      if (this.s1 === null) { this.s1 = x; this.s2 = 0; this.f1 = 0; this.f2 = 0; this.warmStart = t; this.buf = []; this.nbuf = []; this.state = 0; this.prevX = null; }
+      // salto brusco (movimiento del cuerpo/cámara) o pausa externa: se re-ancla la línea base para que no deje una cola larga
+      const jump = this.prevX !== null && this.amp > 0 && Math.abs(x - this.prevX) > Math.max(o.jumpAmp * this.amp, o.jumpNoise * this.noise);
+      if (jump) this.blankUntil = Math.max(this.blankUntil, t + o.blankAfterJumpMs);
+      if (jump || this.reanchor) { this.s1 = x; this.s2 = 0; this.f1 = 0; this.f2 = 0; this.state = 0; this.reanchor = false; }
+      this.s1 += aS * (x - this.s1); const h1 = x - this.s1;
+      this.s2 += aS * (h1 - this.s2); const hp = h1 - this.s2;
+      this.f1 += aL * (hp - this.f1); this.f2 += aL * (this.f1 - this.f2);
+      const y = this.f2; this.fast = y; this.lastT = t;
+      // amplitud típica (mediana robusta) y ruido de alta frecuencia (mediana de |Δ| de la señal cruda)
+      this.buf.push(Math.abs(y));
+      if (this.prevX !== null) this.nbuf.push(Math.abs(x - this.prevX));
+      this.prevX = x;
+      const N = o.ampWinSec * 10;
+      if (this.buf.length > N) this.buf.shift();
+      if (this.nbuf.length > N) this.nbuf.shift();
+      if (++this.cnt % 5 === 0 && this.buf.length >= 50) {
+        this.amp = median(this.buf) / 0.707;
+        this.noise = median(this.nbuf) / 0.6745 / Math.SQRT2;       // σ del ruido blanco ≈ mediana(|Δ|)/(0.6745·√2)
+        this.snr = this.noise > 0 ? this.amp / (this.noise * 0.45) : (this.amp > 0 ? Infinity : 0);
+      }
+      if (t - this.warmStart < o.warmupMs) return;
+      if (!this.segOpen) { this.segs.push({ a: t, b: t }); this.segOpen = true; } else this.segs[this.segs.length - 1].b = t;
+      if (t < this.blankUntil) { this.state = 0; return; }
+      if (!(this.amp > 0) || this.snr < o.minSnr) { this.state = 0; return; }
+      const h = o.thrFrac * this.amp;
+      if (y < -h) this.state = -1;
+      else if (this.state === -1 && y > 0) {
+        this.state = 0;
+        const gap = Math.min(o.maxGapMs, Math.max(o.minGapMs, o.gapFrac * this._medInterval()));
+        if (t - this.lastEvent >= gap) { this.times.push(t); this.lastEvent = t; }
+      }
+    }
+    _medInterval() {
+      const k = this.times.length;
+      if (k < 3) return 0;
+      const iv = []; for (let i = Math.max(1, k - 6); i < k; i++) iv.push(this.times[i] - this.times[i - 1]);
+      return median(iv);
+    }
+    total() { return this.times.length; }
+    observedMs(t0, t1) { let s = 0; for (const g of this.segs) s += Math.max(0, Math.min(t1, g.b) - Math.max(t0, g.a)); return s; }
+    countBetween(t0, t1) { let n = 0; for (const t of this.times) if (t >= t0 && t <= t1) n++; return n; }
+    statsBetween(t0, t1) {
+      const ts = this.times.filter((t) => t >= t0 && t <= t1), n = ts.length;
+      const obs = this.observedMs(t0, t1), span = t1 - t0;
+      const res = { breaths: n, ratePerMin: null, equivPerMin: obs > 0 ? (n * 60000) / obs : null, cv: null, quality: 'baja', reliable: false,
+        observedSec: obs / 1000, snr: this.snr };
+      if (n < 3) return res;
+      const iv = []; for (let i = 1; i < n; i++) iv.push(ts[i] - ts[i - 1]);
+      const med = median(iv), mean = iv.reduce((a, b) => a + b, 0) / iv.length;
+      const sd = Math.sqrt(iv.reduce((a, b) => a + (b - mean) * (b - mean), 0) / iv.length);
+      res.cv = mean > 0 ? sd / mean : null;
+      // ritmo regular: promedio entre ciclos; si es irregular: mediana (resistente a 1 ciclo perdido o doble)
+      res.ratePerMin = res.cv <= 0.25 ? ((n - 1) * 60000) / (ts[n - 1] - ts[0]) : 60000 / med;
+      res.quality = res.cv <= 0.25 ? 'alta' : res.cv <= 0.45 ? 'media' : 'baja';
+      res.reliable = res.quality !== 'baja' && obs >= 0.6 * span;
+      return res;
+    }
+    perMinute() {
+      const t0 = this.firstValidT, out = [];
+      if (t0 === null || this.lastT === null) return out;
+      const total = this.lastT - t0, k = Math.floor(total / 60000);
+      for (let i = 0; i <= k; i++) {
+        const a = t0 + i * 60000, b = Math.min(a + 60000, this.lastT);
+        out.push({ minute: i + 1, count: this.countBetween(a, a + 60000), complete: i < k, sec: Math.round((b - a) / 1000) });
+      }
+      return out;
+    }
+    norm() { return this.amp > 0 ? Math.max(-1, Math.min(1, this.fast / (this.amp * 1.5))) : 0; }
+  }
+
+  /* Dos fuentes de señal: movimiento vertical (principal) y luminancia (respaldo). Se usa la fiable. */
+  class RespHub {
+    constructor() { this.m = new RespCounter(); this.l = new RespCounter(); this.src = 'm'; }
+    reset() { this.m.reset(); this.l.reset(); this.src = 'm'; }
+    pushMotion(t, v) { this.m.push(t, v); }
+    pushLum(t, v) { this.l.push(t, v); }
+    blank(t, ms) { this.m.blank(t, ms); this.l.blank(t, ms); }
+    get lastT() { return this.m.lastT !== null ? this.m.lastT : this.l.lastT; }
+    get firstValidT() { return this.m.firstValidT !== null ? this.m.firstValidT : this.l.firstValidT; }
+    _active() { return this.src === 'm' ? this.m : this.l; }
+    _sync() {
+      const t1 = this.lastT; if (t1 === null) return;
+      const a = this.m.statsBetween(t1 - 30000, t1), b = this.l.statsBetween(t1 - 30000, t1);
+      if (a.reliable) this.src = 'm'; else if (b.reliable) this.src = 'l';
+    }
+    statsBetween(t0, t1) {
+      const a = this.m.statsBetween(t0, t1), b = this.l.statsBetween(t0, t1);
+      const pick = a.reliable ? a : b.reliable ? b : (a.observedSec >= b.observedSec ? a : b);
+      pick.src = pick === a ? 'movimiento' : 'luminancia';
+      return pick;
+    }
+    ratePerMin(ms) { const t1 = this.lastT === null ? 0 : this.lastT; return this.statsBetween(t1 - (ms || 30000), t1); }
+    total() { this._sync(); return this._active().total(); }
+    countLast(ms) { this._sync(); const t1 = this.lastT; return t1 === null ? 0 : this._active().countBetween(t1 - ms, t1); }
+    perMinute() { this._sync(); return this._active().perMinute(); }
+    norm() { return this._active().norm(); }
+  }
+  const resp = new RespHub();
+
+  /* ----------------------------- interfaz ---------------------------- */
+  const CSS = `
+.hdx{background:linear-gradient(180deg,var(--panel,#0e1c2d),var(--panel2,#12283d));border:1px solid var(--line,#2a405b);border-radius:14px;padding:15px;margin-top:14px;color:var(--text,#edf6ff)}
+.hdx h2{margin:0;font-size:1.05rem}
+.hdx-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.hdx-note{color:var(--muted,#a7bfd9);font-size:.85rem;margin:8px 0 12px}
+.hdx-badge{border-radius:999px;padding:4px 12px;font-weight:800;font-size:.9rem;color:#06201c}
+.hdx-opt{background:#70d6c3}.hdx-good{background:#7ad0ff}.hdx-watch{background:#ffd27a}.hdx-risk{background:#ffa26b}.hdx-crit{background:#ff7d7d}.hdx-na{background:#a7bfd9}
+.hdx-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px}
+.hdx-tile{background:#0003;border:1px solid var(--line,#2a405b);border-radius:12px;padding:11px}
+.hdx-tile .l{display:block;color:var(--muted,#a7bfd9);font-size:.74rem;letter-spacing:.06em;text-transform:uppercase}
+.hdx-tile .v{display:block;font-size:1.5rem;font-weight:800;margin-top:3px}
+.hdx-tile .d{color:var(--muted,#a7bfd9);font-size:.84rem}
+.hdx table{width:100%;border-collapse:collapse;font-size:.88rem}
+.hdx th,.hdx td{padding:7px 6px;border-bottom:1px solid #ffffff12;text-align:left;vertical-align:middle}
+.hdx th{color:var(--muted,#a7bfd9);font-weight:600;font-size:.76rem;text-transform:uppercase;letter-spacing:.05em}
+.hdx td.n,.hdx th.n{text-align:right;white-space:nowrap}
+.hdx-bar{display:inline-block;width:70px;height:7px;border-radius:99px;background:#ffffff18;vertical-align:middle;margin-right:6px;overflow:hidden}
+.hdx-bar i{display:block;height:100%;border-radius:99px}
+.hdx-chip{border-radius:999px;padding:2px 9px;font-size:.78rem;font-weight:700;color:#06201c;white-space:nowrap}
+.hdx details{margin-top:12px;color:var(--muted,#a7bfd9);font-size:.85rem}
+.hdx summary{cursor:pointer;color:var(--text,#edf6ff);font-weight:600}
+.hdx-foot{color:var(--muted,#a7bfd9);font-size:.82rem;margin:10px 0 0}
+.hdx-warn{border:1px solid #ffd27a59;background:#ffd27a14;color:#f7dfae;border-radius:10px;padding:9px 11px;margin:10px 0;font-size:.88rem}
+.hdx-tablewrap{overflow-x:auto}
+`;
+  const COLORS = { opt: '#70d6c3', good: '#7ad0ff', watch: '#ffd27a', risk: '#ffa26b', crit: '#ff7d7d', na: '#a7bfd9' };
+  function injectCss() {
+    if (typeof document === 'undefined' || document.getElementById('hdx-css')) return;
+    const s = document.createElement('style'); s.id = 'hdx-css'; s.textContent = CSS; document.head.appendChild(s);
+  }
+  function rangeTxt(d, s) {
+    const [lo, hi] = interval(d.curve, s);
+    if (lo === null || hi === null) return '—';
+    const f = (x) => x.toFixed(d.dec);
+    return lo <= d.curve[0][0] ? '≤ ' + f(hi) : f(lo) + '–' + f(hi);
+  }
+  function thresholdsTable() {
+    const rows = DEFS.map((d) => '<tr><td>' + esc(d.label) + ' (' + esc(d.unit) + ')</td><td class="n">' + rangeTxt(d, 85) + '</td><td class="n">' + rangeTxt(d, 70) +
+      '</td><td class="n">' + rangeTxt(d, 50) + '</td><td class="n">' + rangeTxt(d, 25) + '</td></tr>').join('');
+    return '<div class="hdx-tablewrap"><table><thead><tr><th>Métrica</th><th class="n">Óptimo (≥85)</th><th class="n">Bueno (≥70)</th><th class="n">Vigilancia (≥50)</th><th class="n">Riesgo (≥25)</th></tr></thead><tbody>' +
+      rows + '</tbody></table></div><p>Fuera del rango de “Riesgo” la métrica se considera crítica. Pesos de demostración: ' +
+      DEFS.map((d) => esc(d.label.split(' (')[0]) + ' ' + Math.round(d.weight * 100) + ' %').join(' · ') + '.</p>';
+  }
+  function tile(label, score) {
+    const l = score === null ? null : levelOf(score);
+    return '<div class="hdx-tile"><span class="l">' + esc(label) + '</span><span class="v">' + (l ? esc(l.fatiga) : 'N/D') + '</span><span class="d">' +
+      (score === null ? 'sin datos' : 'Puntaje ' + score.toFixed(0) + '/100') + '</span></div>';
+  }
+  function respTile(r) {
+    if (!r) return '';
+    const ok = r.reliable && isNum(r.ratePerMin);
+    return '<div class="hdx-tile"><span class="l">Respiración por minuto</span><span class="v">' + (ok ? r.ratePerMin.toFixed(1) : '—') +
+      ' <small>resp./min</small></span><span class="d">' + r.breaths + ' respiraciones en la ventana' +
+      (ok ? ' · calidad ' + esc(r.quality) : ' · señal poco fiable (excluida del índice)') + '</span></div>';
+  }
+  function render(r, container) {
+    if (typeof document === 'undefined') return;
+    injectCss();
+    let el = typeof container === 'string' ? document.querySelector(container) : container;
+    if (!el) { el = document.getElementById('hdx-panel'); if (!el) { el = document.createElement('section'); el.id = 'hdx-panel'; (document.querySelector('main') || document.body).appendChild(el); } }
+    const lvl = r.conclusivo ? r.level : null;
+    const badge = '<span class="hdx-badge hdx-' + (lvl ? lvl.key : 'na') + '">' + (lvl ? esc(lvl.name) : 'No concluyente') + '</span>';
+    const rows = r.comps.map((c) => {
+      const col = COLORS[c.level.key];
+      const desv = c.deviation === 0 ? 'dentro del rango' : (c.deviation > 0 ? '+' : '−') + Math.abs(c.deviation).toFixed(c.dec) + ' ' + esc(c.unit);
+      return '<tr><td>' + esc(c.label) + '</td><td class="n"><strong>' + fmt(c.value, c.dec) + '</strong> ' + esc(c.unit) + '</td><td class="n">' + esc(c.idealTxt) +
+        '</td><td class="n">' + desv + '</td><td class="n"><span class="hdx-bar"><i style="width:' + c.score.toFixed(0) + '%;background:' + col + '"></i></span>' + c.score.toFixed(0) +
+        '</td><td><span class="hdx-chip" style="background:' + col + '">' + esc(c.level.name) + '</span></td></tr>';
+    }).join('');
+    const falt = r.faltantes.length ? '<p class="hdx-foot">Sin datos suficientes (excluidas y pesos renormalizados): ' + r.faltantes.map(esc).join(', ') + '.</p>' : '';
+    el.className = 'hdx';
+    el.innerHTML =
+      '<div class="hdx-head"><h2>Índice experimental de señales oculorrespiratorias</h2>' + badge + '</div>' +
+      '<p class="hdx-note">Índice experimental con umbrales de demostración. Compara esta ventana contra una base ideal interna; no es un diagnóstico médico ni una probabilidad validada de fatiga.</p>' +
+      (r.motivo ? '<div class="hdx-warn"><strong>No concluyente:</strong> ' + esc(r.motivo) + ' Los puntajes siguientes son solo referencia.</div>' : '') +
+      '<div class="hdx-tiles"><div class="hdx-tile"><span class="l">Índice de estado</span><span class="v">' + (r.score === null ? '—' : r.score.toFixed(0)) +
+      ' <small>/100</small></span><span class="d">' + (lvl ? 'Señales clasificadas como: ' + esc(lvl.fatiga) : 'sin conclusión') + '</span></div>' +
+      tile('Fatiga ocular', r.ocular) + tile('Cansancio corporal', r.corporal) + respTile(r.resp) +
+      '<div class="hdx-tile"><span class="l">Patrón observado</span><span class="v" style="font-size:1.05rem">' + esc(r.patron || '—') + '</span><span class="d">Descriptivo, no diagnóstico</span></div></div>' +
+      (r.escalado ? '<div class="hdx-warn">Una métrica está en zona crítica: el índice se limitó a “Vigilancia” como máximo.</div>' : '') +
+      '<div class="hdx-tablewrap"><table><thead><tr><th>Métrica</th><th class="n">Valor</th><th class="n">Ideal</th><th class="n">Desviación</th><th class="n">Puntaje</th><th>Estado</th></tr></thead><tbody>' +
+      rows + '</tbody></table></div>' + falt +
+      (r.recomendacion ? '<p class="hdx-foot"><strong>Sugerencia prudente:</strong> ' + esc(r.recomendacion) + '</p>' : '') +
+      '<p class="hdx-foot">Cobertura facial: ' + (r.coverage === null ? '—' : Math.round(r.coverage * 100) + ' %') + ' · Métricas usadas: ' + r.usados + '/' + r.total + ' · RGB periocular excluido del índice.</p>' +
+      '<details><summary>Ver umbrales internos</summary>' + thresholdsTable() + '</details>';
+  }
+
+  global.HeamonDx = { DEFS, LEVELS, CFG, evaluar, render, resp, RespCounter, RespHub, _interp: interp, _interval: interval };
+  if (typeof module !== 'undefined' && module.exports) module.exports = global.HeamonDx;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+
+<script type="module">
+'use strict';
+/* =====================================================================
+ * HEAMON · monitor continuo + ventana de análisis independiente de 30 s
+ * ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const Dx = window.HeamonDx;
+
+const WIN_MS = 30000; // ventana de análisis: exactamente 30 segundos
+const CFG = {
+  CW: 320,              // ancho del lienzo de muestreo (px)
+  closeFrac: 0.70,      // ojo "cerrado" si EAR < 70 % de la línea base abierta
+  openFrac: 0.80,       // se reabre si EAR > 80 % (histéresis)
+  minClosureMs: 60,     // cierres más cortos se ignoran como ruido
+  maxClosureMs: 3000,   // cierres más largos no se cuentan como pestañeo
+  baseMin: 45,          // muestras mínimas para calibrar la línea base
+  bufMax: 600,          // muestras de EAR para la línea base (≈ 20 s)
+  maxGapMs: 250,        // hueco máximo entre frames para acumular tiempo válido
+  noseJump: 0.12        // salto de la nariz (en distancias entre ojos) que pausa el conteo respiratorio
+};
+const LE = [33, 160, 158, 133, 153, 144];   // landmarks ojo (MediaPipe FaceMesh)
+const RE = [362, 385, 387, 263, 373, 380];
+const MP_VER = '0.10.14';
+const MP_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + MP_VER;
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+
+const video = $('video'), overlay = $('overlay'), octx = overlay.getContext('2d');
+const sCanvas = document.createElement('canvas');
+const sCtx = sCanvas.getContext('2d', { willReadFrequently: true });
+let CH = 240;
+sCanvas.width = CFG.CW; sCanvas.height = CH;
+
+/* ------------------------------ acumuladores ------------------------------ */
+class Acc {
+  constructor() {
+    this.validMs = 0; this.closedMs = 0; this.blinks = 0; this.durSum = 0;
+    this.earSum = 0; this.earN = 0; this.rollSum = 0; this.rollN = 0;
+    this.rgb = [0, 0, 0]; this.rgbN = 0;
+    this.n = 0; this.sx = 0; this.sy = 0; this.sxx = 0; this.syy = 0;
+  }
+  frame(f, dt) {
+    if (!dt) return;
+    this.validMs += dt;
+    if (f.closed) this.closedMs += dt;
+    this.earSum += f.ear; this.earN++;
+    this.rollSum += Math.abs(f.roll); this.rollN++;
+    if (f.rgb) { this.rgb[0] += f.rgb[0]; this.rgb[1] += f.rgb[1]; this.rgb[2] += f.rgb[2]; this.rgbN++; }
+    this.n++; this.sx += f.nx; this.sy += f.ny; this.sxx += f.nx * f.nx; this.syy += f.ny * f.ny;
+  }
+  blink(durMs) { this.blinks++; this.durSum += durMs; }
+}
+
+function metrics(a, spanMs) {
+  const v = a.validMs;
+  let head = null;
+  if (a.n >= 10) {
+    const mx = a.sx / a.n, my = a.sy / a.n;
+    head = Math.sqrt(Math.max(0, a.sxx / a.n - mx * mx) + Math.max(0, a.syy / a.n - my * my));
+  }
+  return {
+    blinks: a.blinks,
+    validSec: v / 1000,
+    coverage: spanMs > 0 ? Math.min(1, v / spanMs) : null,
+    blinkRate: v >= 5000 ? a.blinks / (v / 60000) : null,
+    perclos: v > 0 ? (a.closedMs / v) * 100 : null,
+    aecd: a.blinks > 0 ? a.durSum / a.blinks : null,
+    ear: a.earN ? a.earSum / a.earN : null,
+    roll: a.rollN ? a.rollSum / a.rollN : null,
+    rgb: a.rgbN ? a.rgb.map((x) => x / a.rgbN) : null,
+    head
+  };
+}
+
+/* --------------------------------- estado --------------------------------- */
+function freshState() {
+  return {
+    running: false, sim: false, simNow: 0, tStart: 0,
+    lastFaceT: null, faceNow: false,
+    earBuf: [], base: null, frameN: 0, closed: false, closeStart: 0,
+    total: new Acc(), win: null, winActive: false, winStart: 0, winEnd: 0, lastWin: null,
+    prev: null, results: [], lastEar: null, lastRoll: null,
+    torso: null, torsoOK: null, torsoTex: null, hist: [], lastVT: -1, lastDetT: 0, raf: 0, prevNose: null
+  };
+}
+let S = freshState();
+let stream = null, landmarker = null;
+
+/* ------------------------------ utilidades ------------------------------ */
+const nowMs = () => (S.sim ? S.simNow : performance.now());
+const fx = (v, d) => (typeof v === 'number' && isFinite(v) ? v.toFixed(d) : '—');
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function pct(arr, p) {
+  const a = arr.slice().sort((x, y) => x - y);
+  return a[Math.min(a.length - 1, Math.floor(p * (a.length - 1) + 0.5))];
+}
+function setStatus(t) { $('status').textContent = t; }
+function mmss(ms) { const s = Math.max(0, Math.floor(ms / 1000)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); }
+
+/* ------------------------- geometría de landmarks ------------------------- */
+function feats(lm, W, H) {
+  const P = (i) => [lm[i].x * W, lm[i].y * H];
+  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const earOf = (ids) => {
+    const p = ids.map(P);
+    const h = d(p[0], p[3]);
+    return h > 0 ? (d(p[1], p[5]) + d(p[2], p[4])) / (2 * h) : NaN;
+  };
+  const a = P(33), b = P(263);
+  const iod = d(a, b);
+  if (!(iod >= 15)) return null;                       // rostro demasiado pequeño o lejos
+  const ear = (earOf(LE) + earOf(RE)) / 2;
+  if (!isFinite(ear)) return null;
+  const roll = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+  const nose = P(1);
+  return { ear, roll, iod, nx: nose[0] / iod, ny: nose[1] / iod };
+}
+
+/* ----------------------------------------------------------------------------
+ * Señal respiratoria del torso (EXPERIMENTAL)
+ *  - Principal: desplazamiento VERTICAL sub-píxel del contenido de la región del
+ *    torso (flujo óptico 1D tipo Lucas-Kanade contra un cuadro de referencia).
+ *    Es mucho más sensible a respiraciones débiles que el brillo medio.
+ *  - Respaldo: luminancia media de la región.
+ * -------------------------------------------------------------------------- */
+let gPool = null, gRef = null, refOffset = 0;
+function frameGray() {
+  const n = CFG.CW * CH;
+  if (!gPool || gPool[0].length !== n) { gPool = [new Float32Array(n), new Float32Array(n), new Float32Array(n)]; gRef = null; refOffset = 0; }
+  const buf = gPool.find((b) => b !== gRef);        // nunca se sobrescribe el cuadro de referencia
+  const im = sCtx.getImageData(0, 0, CFG.CW, CH).data;
+  for (let i = 0, j = 0; i < n; i++, j += 4) buf[i] = 0.299 * im[j] + 0.587 * im[j + 1] + 0.114 * im[j + 2];
+  return buf;
+}
+function lkVertical(ref, cur, x0, x1, y0, y1) {
+  const W = CFG.CW, B = 4;
+  let num = 0, den = 0, cnt = 0, tot = 0;
+  for (let bx = x0; bx + B <= x1; bx += B) {
+    for (let y = y0 + 1; y < y1 - 1; y++) {
+      let r0 = 0, r1 = 0, r2 = 0, c0 = 0, c1 = 0, c2 = 0;
+      for (let k = 0; k < B; k++) {
+        const i = y * W + bx + k;
+        r0 += ref[i - W]; r1 += ref[i]; r2 += ref[i + W];
+        c0 += cur[i - W]; c1 += cur[i]; c2 += cur[i + W];
+      }
+      const iy = (r2 - r0 + c2 - c0) / (4 * B), it = (c1 - r1) / B;
+      tot++;
+      if (Math.abs(iy) > 1.0) { num += it * iy; den += iy * iy; cnt++; }
+    }
+  }
+  if (tot === 0 || cnt / tot < 0.03 || den < 50) return null;        // región sin textura suficiente
+  return { d: -num / den, texture: cnt / tot };
+}
+
+const defaultSmp = {
+  // devuelve { mov, lum, jump } o null si el torso no está en cuadro
+  torso(lm) {
+    const W = CFG.CW, H = CH;
+    const xl = lm[234].x * W, xr = lm[454].x * W, fw = xr - xl, chin = lm[152].y * H;
+    if (!(fw > 20)) return null;
+    const cx = (xl + xr) / 2, top = chin + 0.15 * fw, w = 1.8 * fw, h = 0.7 * fw;
+    const t = S.torso || { cx, top, w, h };
+    t.cx += 0.2 * (cx - t.cx); t.top += 0.2 * (top - t.top); t.w += 0.2 * (w - t.w); t.h += 0.2 * (h - t.h);
+    S.torso = t;
+    const x0 = Math.max(0, Math.round(t.cx - t.w / 2)), x1 = Math.min(W, Math.round(t.cx + t.w / 2));
+    const y0 = Math.max(0, Math.round(t.top)), y1 = Math.min(H, Math.round(t.top + t.h));
+    const visible = ((x1 - x0) * (y1 - y0)) / (t.w * t.h);
+    if (x1 - x0 < 16 || y1 - y0 < 12 || visible < 0.4) return null;   // torso fuera de cuadro
+    const cur = frameGray();
+    // luminancia media (respaldo)
+    let s = 0, n = 0;
+    for (let y = y0; y < y1; y += 2) for (let x = x0; x < x1; x += 2) { s += cur[y * W + x]; n++; }
+    const lum = n ? s / n : null;
+    // desplazamiento vertical respecto al cuadro de referencia
+    let mov = null, jump = false;
+    if (!gRef) { gRef = cur; refOffset = 0; mov = 0; }
+    else {
+      const r = lkVertical(gRef, cur, x0, x1, y0, y1);
+      S.torsoTex = r ? r.texture : 0;
+      if (r) {
+        if (Math.abs(r.d) > 4) { jump = true; gRef = cur; }            // movimiento brusco: se vuelve a referenciar
+        else {
+          if (Math.abs(r.d) > 1.0) { refOffset += r.d; gRef = cur; mov = refOffset; }   // se re-basa para no perder la linealidad
+          else mov = refOffset + r.d;
+        }
+      }
+    }
+    return { mov, lum, jump };
+  },
+  // RGB medio (0–255) de dos cajas bajo los ojos. Dato contextual, EXCLUIDO del índice.
+  rgb(lm) {
+    const W = CFG.CW, H = CH;
+    const out = [0, 0, 0]; let n = 0;
+    for (const ids of [LE, RE]) {
+      const P = (i) => [lm[i].x * W, lm[i].y * H];
+      const w = Math.hypot(P(ids[0])[0] - P(ids[3])[0], P(ids[0])[1] - P(ids[3])[1]);
+      const p5 = P(ids[4]), p6 = P(ids[5]);
+      const cx = (p5[0] + p6[0]) / 2, cy = (p5[1] + p6[1]) / 2 + 0.45 * w;
+      const s = Math.max(3, Math.round(0.45 * w));
+      const x = Math.round(cx - s / 2), y = Math.round(cy - s / 2);
+      if (x < 0 || y < 0 || x + s > W || y + s > H) continue;
+      const im = sCtx.getImageData(x, y, s, s).data;
+      for (let i = 0; i < im.length; i += 4) { out[0] += im[i]; out[1] += im[i + 1]; out[2] += im[i + 2]; n++; }
+    }
+    return n ? out.map((v) => v / n) : null;
+  }
+};
+
+/* ------------------------------- procesamiento ------------------------------- */
+function onClosure(durMs, t) {
+  S.total.blink(durMs);
+  if (S.winActive && t >= S.winStart && t <= S.winEnd) S.win.blink(durMs);
+}
+
+function processFace(lm, t, smp) {
+  smp = smp || defaultSmp;
+  const f = feats(lm, CFG.CW, CH);
+  if (!f) { processNoFace(t); return; }
+  const gap = S.lastFaceT === null ? Infinity : t - S.lastFaceT;
+  S.lastFaceT = t;
+  const dt = gap <= CFG.maxGapMs ? gap : 0;
+  if (gap > CFG.maxGapMs) { S.closed = false; S.prevNose = null; }   // hueco: no se arrastra un cierre abierto
+  S.faceNow = true;
+
+  // Línea base del ojo abierto (percentil 90 de ~20 s) y detección de cierres con histéresis
+  S.earBuf.push(f.ear); if (S.earBuf.length > CFG.bufMax) S.earBuf.shift();
+  S.frameN++;
+  if ((S.base === null && S.earBuf.length >= 10) || S.frameN % 15 === 0) S.base = pct(S.earBuf, 0.9);
+  const calibrating = S.earBuf.length < CFG.baseMin || !S.base;
+  if (!calibrating) {
+    if (!S.closed && f.ear < S.base * CFG.closeFrac) { S.closed = true; S.closeStart = t; }
+    else if (S.closed && f.ear > S.base * CFG.openFrac) {
+      S.closed = false;
+      const dur = t - S.closeStart;
+      if (dur >= CFG.minClosureMs && dur <= CFG.maxClosureMs) onClosure(dur, t);
+    }
+  }
+  f.closed = S.closed;
+  f.rgb = smp.rgb(lm);
+
+  // Acumulación: monitor completo y (si hay) ventana de análisis, recortada a [inicio, fin]
+  S.total.frame(f, dt);
+  if (S.winActive && dt > 0) {
+    const a = Math.max(t - dt, S.winStart), b = Math.min(t, S.winEnd);
+    if (b > a) S.win.frame(f, b - a);
+  }
+
+  // Señal respiratoria (experimental). Un salto brusco de la cabeza pausa el conteo 1 s.
+  if (S.prevNose && Math.hypot(f.nx - S.prevNose[0], f.ny - S.prevNose[1]) > CFG.noseJump) Dx.resp.blank(t, 1000);
+  S.prevNose = [f.nx, f.ny];
+  const tr = smp.torso(lm);
+  S.torsoOK = tr !== null;
+  if (tr) {
+    if (tr.jump) Dx.resp.blank(t, 1000);
+    if (typeof tr.lum === 'number') Dx.resp.pushLum(t, tr.lum);
+    if (typeof tr.mov === 'number') Dx.resp.pushMotion(t, tr.mov);
+  }
+
+  S.lastEar = f.ear; S.lastRoll = f.roll;
+  S.hist.push({ t, ear: f.ear, rs: S.torsoOK ? Dx.resp.norm() : null });
+  while (S.hist.length && t - S.hist[0].t > 61000) S.hist.shift();
+  checkWindow(t);
+}
+
+function processNoFace(t) {
+  S.faceNow = false; S.closed = false; S.torsoOK = null; S.prevNose = null;
+  S.hist.push({ t, ear: null, rs: null });
+  while (S.hist.length && t - S.hist[0].t > 61000) S.hist.shift();
+  checkWindow(t);
+}
+
+/* ------------------------------ ventana de 30 s ------------------------------ */
+function startWindow(t) {
+  S.win = new Acc(); S.winActive = true; S.winStart = t; S.winEnd = t + WIN_MS;
+  $('btnAnalyze').disabled = true; $('btnCancel').disabled = false;
+}
+function checkWindow(t) { if (S.winActive && t >= S.winEnd) finalizeWindow(); }
+
+function cancelWindow(msg) {
+  if (!S.winActive) return;
+  S.winActive = false; S.win = null;
+  $('btnAnalyze').disabled = !S.running; $('btnCancel').disabled = true;
+  $('prog').style.width = '0%';
+  if (msg) setStatus(msg);
+}
+
+function finalizeWindow() {
+  S.winActive = false;
+  const m = metrics(S.win, WIN_MS);
+  const rs = Dx.resp.statsBetween(S.winStart, S.winEnd);
+  const dx = Dx.evaluar({
+    perclos: m.perclos, aecdMs: m.aecd, blinkRate: m.blinkRate,
+    respRate: rs.reliable ? rs.ratePerMin : null, headMotion: m.head, coverage: m.coverage, resp: rs
+  });
+  const res = { idx: S.results.length + 1, when: new Date(), m, resp: rs, dx };
+  S.lastWin = { blinks: m.blinks, breaths: rs.breaths };
+  const prev = S.prev;
+  Dx.render(dx, '#hdx-panel');
+  renderCompare(res, prev);
+  S.results.push(res); S.prev = res;
+  renderHistory();
+  const e = S.winEnd;
+  $('btnCancel').disabled = true;
+  if ($('chain').checked && S.running) { startWindow(e); setStatus('Análisis #' + res.idx + ' completado. Monitor activo; nuevo análisis de 30 s en curso.'); }
+  else { $('btnAnalyze').disabled = !S.running; setStatus('Análisis #' + res.idx + ' completado. El monitor sigue activo.'); }
+  $('prog').style.width = '0%';
+}
+
+/* ------------------------------ comparación ------------------------------ */
+const respRate = (r) => (r.resp.reliable ? r.resp.ratePerMin : null);
+const ROWS = [
+  { label: 'Pestañeadas en la ventana', unit: 'conteo', dec: 0, get: (r) => r.m.blinks },
+  { label: 'Frecuencia de pestañeo', unit: 'pest./min', dec: 1, score: 'blink', get: (r) => r.m.blinkRate },
+  { label: 'PERCLOS', unit: '%', dec: 1, score: 'perclos', get: (r) => r.m.perclos },
+  { label: 'Cierre ocular medio (AECD)', unit: 'ms', dec: 0, score: 'aecd', get: (r) => r.m.aecd },
+  { label: 'EAR medio', unit: 'adim.', dec: 3, get: (r) => r.m.ear },
+  { label: 'Respiraciones en la ventana', unit: 'conteo', dec: 0, get: (r) => r.resp.breaths },
+  { label: 'Respiración por minuto (ritmo medido)', unit: 'resp./min', dec: 1, score: 'resp', get: respRate },
+  { label: 'Respiración por minuto (conteo × 60 / tiempo observado)', unit: 'resp./min', dec: 1, get: (r) => r.resp.equivPerMin },
+  { label: 'Inclinación roll (media absoluta)', unit: '°', dec: 1, get: (r) => r.m.roll },
+  { label: 'Movimiento de cabeza', unit: 'adim.', dec: 3, score: 'head', get: (r) => r.m.head },
+  { label: 'Cobertura facial', unit: '%', dec: 0, dunit: 'p.p.', get: (r) => (r.m.coverage === null ? null : r.m.coverage * 100) },
+  { label: 'Índice experimental', unit: 'puntos (0–100)', dec: 0, dunit: 'puntos', get: (r) => r.dx.score }
+];
+const sgn = (v, d) => { const r = Number(Math.abs(v).toFixed(d)); return r === 0 ? null : (v > 0 ? '+' : '−') + r.toFixed(d); };
+function compScore(r, key) { const c = r.dx.comps.find((x) => x.key === key); return c ? c.score : null; }
+
+function renderCompare(res, prev) {
+  const rows = ROWS.map((r) => {
+    const cur = r.get(res), pv = prev ? r.get(prev) : null;
+    let delta = '—', cls = 'flat';
+    if (prev && typeof cur === 'number' && typeof pv === 'number') {
+      const s = sgn(cur - pv, r.dec);
+      delta = s === null ? 'sin cambio' : s + ' ' + (r.dunit || r.unit);
+      if (s !== null) {
+        const sc = r.score ? compScore(res, r.score) : null, sp = r.score ? compScore(prev, r.score) : null;
+        if (r.label === 'Índice experimental') cls = cur - pv >= 5 ? 'up' : cur - pv <= -5 ? 'down' : 'flat';
+        else if (sc !== null && sp !== null) cls = sc - sp >= 5 ? 'up' : sc - sp <= -5 ? 'down' : 'flat';
+        delta = (cur - pv > 0 ? '▲ ' : '▼ ') + delta;
+      }
+    } else if (prev) delta = 'n/d';
+    return '<tr><td>' + esc(r.label) + '</td><td class="small">' + esc(r.unit) + '</td><td class="n"><strong>' + fx(cur, r.dec) +
+      '</strong></td><td class="n">' + (prev ? fx(pv, r.dec) : '—') + '</td><td class="n ' + cls + '">' + delta + '</td></tr>';
+  }).join('');
+
+  const rg = res.m.rgb, rp = prev ? prev.m.rgb : null;
+  const rgTxt = (a) => (a ? 'R ' + a[0].toFixed(0) + ' · G ' + a[1].toFixed(0) + ' · B ' + a[2].toFixed(0) : '—');
+  const rgDelta = rg && rp ? ['R', 'G', 'B'].map((c, i) => 'Δ' + c + ' ' + (sgn(rg[i] - rp[i], 0) || '±0')).join(' · ') : '—';
+  const rgbRow = '<tr><td>RGB periocular (contextual, fuera del índice)</td><td class="small">canal 0–255</td><td class="n">' + rgTxt(rg) +
+    '</td><td class="n">' + rgTxt(rp) + '</td><td class="n flat">' + rgDelta + '</td></tr>';
+
+  $('compare').innerHTML =
+    '<h2>Comparación con el análisis anterior</h2>' +
+    '<p class="small">' + (prev ? 'Análisis #' + res.idx + ' frente al análisis completado inmediatamente anterior (#' + prev.idx + '). ▲/▼ indican el signo del cambio; el color indica si la métrica se acerca (verde) o se aleja (rojo) de la base ideal interna.'
+      : 'Análisis #' + res.idx + ' es el primero de la sesión: aún no hay análisis anterior con el que comparar.') + '</p>' +
+    '<div class="tablewrap"><table><thead><tr><th>Métrica</th><th>Unidad</th><th class="n">Análisis #' + res.idx + '</th><th class="n">' +
+    (prev ? 'Anterior #' + prev.idx : 'Anterior') + '</th><th class="n">Cambio (Δ)</th></tr></thead><tbody>' + rows + rgbRow + '</tbody></table></div>';
+}
+
+function renderHistory() {
+  const rows = S.results.slice().reverse().map((r) =>
+    '<tr><td>#' + r.idx + '</td><td>' + r.when.toLocaleTimeString('es') + '</td><td class="n">' + (r.dx.score === null ? '—' : r.dx.score.toFixed(0)) +
+    '</td><td>' + (r.dx.conclusivo ? esc(r.dx.level.name) : 'No concluyente') + '</td><td class="n">' + fx(r.m.perclos, 1) + '</td><td class="n">' +
+    fx(r.m.blinkRate, 1) + '</td><td class="n">' + r.resp.breaths + '</td><td class="n">' + (r.resp.reliable ? r.resp.ratePerMin.toFixed(1) : '—') + '</td></tr>').join('');
+  $('history').innerHTML = '<h2>Historial de esta sesión</h2><div class="tablewrap"><table><thead><tr><th>Análisis</th><th>Hora</th><th class="n">Índice (0–100)</th><th>Nivel</th>' +
+    '<th class="n">PERCLOS (%)</th><th class="n">Pest./min</th><th class="n">Resp. (30 s)</th><th class="n">Resp./min</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<p class="small">Solo en memoria: se pierde al recargar o cerrar la pestaña.</p>';
+}
+
+/* ------------------------------- interfaz viva ------------------------------- */
+let lastPerMin = '';
+function ui() {
+  const t = nowMs();
+  const m = S.running ? metrics(S.total, Math.max(1, t - S.tStart)) : null;
+  $('cBlinkTot').textContent = S.total.blinks;
+  $('cRespTot').textContent = Dx.resp.total();
+  if (S.winActive) {
+    const left = Math.max(0, S.winEnd - t), frac = clamp((t - S.winStart) / WIN_MS, 0, 1);
+    const wm = metrics(S.win, Math.max(1, Math.min(WIN_MS, t - S.winStart)));
+    $('prog').style.width = (frac * 100).toFixed(1) + '%';
+    $('winText').textContent = 'Ventana de análisis en curso: ' + Math.ceil(left / 1000) + ' s restantes de 30 s · cobertura parcial ' + fx(wm.coverage * 100, 0) + ' %.';
+    $('cBlinkWin').textContent = S.win.blinks; $('cBlinkWinD').textContent = 'conteo · ventana en curso (30 s)';
+    const rs = Dx.resp.statsBetween(S.winStart, Math.min(t, S.winEnd));
+    $('cRespWin').textContent = rs.breaths; $('cRespWinD').textContent = 'conteo · ventana en curso (30 s)';
+  } else {
+    $('prog').style.width = '0%';
+    $('winText').textContent = S.running ? 'Ventana de análisis: inactiva. El monitor sigue activo.' : 'Ventana de análisis: inactiva.';
+    $('cBlinkWin').textContent = S.lastWin ? S.lastWin.blinks : '—';
+    $('cBlinkWinD').textContent = S.lastWin ? 'conteo · último análisis completado' : 'conteo · ventana de 30 s';
+    $('cRespWin').textContent = S.lastWin ? S.lastWin.breaths : '—';
+    $('cRespWinD').textContent = S.lastWin ? 'conteo · último análisis completado' : 'conteo · ventana de 30 s';
+  }
+  const rr = S.running ? Dx.resp.ratePerMin(30000) : null;
+  $('cResp').textContent = rr && rr.reliable ? rr.ratePerMin.toFixed(1) : '—';
+  $('cRespD').textContent = rr && rr.reliable ? 'resp./min · calidad ' + rr.quality : 'resp./min · calibrando o señal poco fiable';
+  const calResp = Dx.resp.firstValidT !== null;
+  $('cRespMin').textContent = S.running && calResp ? Dx.resp.countLast(60000) : '—';
+  $('cCov').textContent = m ? fx(m.coverage * 100, 0) + ' %' : '—';
+  $('sTime').textContent = S.running ? mmss(t - S.tStart) : '00:00';
+  $('sRate').textContent = m && m.blinkRate !== null ? m.blinkRate.toFixed(1) + ' pest./min' : '—';
+  $('sEar').textContent = S.running && S.lastEar !== null ? S.lastEar.toFixed(3) : '—';
+  $('sThr').textContent = S.base ? (S.base * CFG.closeFrac).toFixed(3) : '—';
+  $('sRoll').textContent = S.running && S.lastRoll !== null ? S.lastRoll.toFixed(1) + ' °' : '—';
+  $('sTorso').textContent = !S.running ? '—' : S.torsoOK === null ? 'sin rostro' : S.torsoOK ? 'en cuadro' : 'fuera de cuadro';
+  $('sSrc').textContent = !S.running || !calResp ? '—' : (Dx.resp.src === 'm' ? 'movimiento vertical' : 'luminancia (respaldo)');
+  if (S.running) {
+    const calEye = S.earBuf.length >= CFG.baseMin;
+    $('calText').textContent = (calEye ? '✔ Línea base ocular lista. ' : '… Calibrando línea base ocular. ') +
+      (calResp ? '✔ Señal respiratoria lista.' : '… Calibrando señal respiratoria (≈10 s con el torso en cuadro).') +
+      (S.torsoOK && S.torsoTex === 0 ? ' Poca textura en el torso: usa ropa con contraste o un fondo distinto.' : '');
+  }
+  // respiraciones por minuto (monitor)
+  const pm = S.running && calResp ? Dx.resp.perMinute() : [];
+  const html = pm.length ? pm.slice(-8).map((p) => '<li class="' + (p.complete ? '' : 'cur') + '">Min ' + p.minute + ': <strong>' + p.count + '</strong>' +
+    (p.complete ? '' : ' <span class="small">(en curso, ' + p.sec + ' s)</span>') + '</li>').join('') : '<li>Sin datos todavía</li>';
+  if (html !== lastPerMin) { $('perMin').innerHTML = html; lastPerMin = html; }
+  drawChart(t);
+}
+
+function drawChart(t) {
+  const c = $('chart'), g = c.getContext('2d'), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = '#ffffff12'; g.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, (H * i) / 4); g.lineTo(W, (H * i) / 4); g.stroke(); }
+  g.fillStyle = '#a7bfd9'; g.font = '12px system-ui';
+  g.fillText('−60 s', 6, H - 6); g.fillText('ahora', W - 44, H - 6);
+  if (!S.hist.length) return;
+  const X = (ts) => ((ts - (t - 60000)) / 60000) * W;
+  const yEar = (v) => H - 18 - clamp(v / 0.45, 0, 1) * (H - 30);
+  const yRs = (v) => H / 2 - v * (H / 2 - 14);
+  if (S.base) {
+    g.strokeStyle = '#ffd27a'; g.setLineDash([6, 4]); g.beginPath();
+    const y = yEar(S.base * CFG.closeFrac); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); g.setLineDash([]);
+  }
+  const line = (key, Y, color) => {
+    g.strokeStyle = color; g.lineWidth = 2; g.beginPath(); let pen = false, lastT = 0;
+    for (const p of S.hist) {
+      const v = p[key];
+      if (v === null || v === undefined || p.t < t - 60000) { pen = false; continue; }
+      if (pen && p.t - lastT > 400) pen = false;
+      const x = X(p.t), y = Y(v);
+      if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; }
+      lastT = p.t;
+    }
+    g.stroke();
+  };
+  line('rs', yRs, '#7ad0ff');
+  line('ear', yEar, '#70d6c3');
+}
+
+function drawOverlay(lm) {
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  if (!lm) return;
+  const W = overlay.width, H = overlay.height;
+  octx.fillStyle = S.closed ? '#ff7d7d' : '#70d6c3';
+  for (const i of [...LE, ...RE]) { octx.beginPath(); octx.arc(lm[i].x * W, lm[i].y * H, 2.5, 0, 6.2832); octx.fill(); }
+  if (S.torso) {
+    const k = W / CFG.CW, t = S.torso;
+    octx.strokeStyle = '#7ad0ff'; octx.lineWidth = 2; octx.setLineDash([6, 4]);
+    octx.strokeRect((t.cx - t.w / 2) * k, t.top * k, t.w * k, t.h * k); octx.setLineDash([]);
+  }
+}
+
+/* ------------------------------ cámara y modelo ------------------------------ */
+async function ensureLandmarker() {
+  if (landmarker) return;
+  const mod = await import(MP_URL + '/vision_bundle.mjs');
+  const files = await mod.FilesetResolver.forVisionTasks(MP_URL + '/wasm');
+  const opts = (delegate) => ({ baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: false });
+  try { landmarker = await mod.FaceLandmarker.createFromOptions(files, opts('GPU')); }
+  catch (e) { landmarker = await mod.FaceLandmarker.createFromOptions(files, opts('CPU')); }
+}
+
+async function startMonitor() {
+  if (S.running) return;
+  $('btnStart').disabled = true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus('Este navegador/contexto no permite usar la cámara (se requiere HTTPS o localhost).'); $('btnStart').disabled = false; return;
+  }
+  setStatus('Cargando MediaPipe y el modelo…');
+  try { await ensureLandmarker(); }
+  catch (e) { setStatus('No se pudo cargar MediaPipe (¿sin conexión a internet?): ' + (e && e.message ? e.message : e)); $('btnStart').disabled = false; return; }
+  try {
+    stream = (window.parent !== window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false });
+    video.srcObject = stream; await video.play();
+  } catch (e) { setStatus('No se pudo acceder a la cámara: ' + (e && e.message ? e.message : e)); $('btnStart').disabled = false; return; }
+  CH = Math.max(1, Math.round((CFG.CW * video.videoHeight) / video.videoWidth));
+  sCanvas.width = CFG.CW; sCanvas.height = CH;
+  overlay.width = video.videoWidth; overlay.height = video.videoHeight;
+  resetSession();
+  S.running = true; S.tStart = performance.now();
+  $('btnStop').disabled = false; $('btnAnalyze').disabled = false;
+  setStatus('Monitor activo. Calibrando; puedes iniciar un análisis de 30 s cuando quieras.');
+  S.raf = requestAnimationFrame(loop);
+}
+
+function resetSession() {
+  S = freshState(); Dx.resp.reset(); gRef = null; gPool = null; refOffset = 0; lastPerMin = '';
+  $('hdx-panel').innerHTML = '';
+  $('compare').innerHTML = '<h2>Comparación con el análisis anterior</h2><p class="empty">Aún no hay análisis completados. Con el monitor activo, pulsa “Iniciar análisis (30 s)”.</p>';
+  $('history').innerHTML = '<h2>Historial de esta sesión</h2><p class="empty">Sin análisis todavía.</p>';
+}
+
+function loop() {
+  if (!S.running) return;
+  const t = performance.now();
+  if (video.readyState >= 2 && video.currentTime !== S.lastVT) {
+    S.lastVT = video.currentTime;
+    sCtx.drawImage(video, 0, 0, CFG.CW, CH);
+    let lm = null;
+    try {
+      const ts = t > S.lastDetT ? t : S.lastDetT + 1; S.lastDetT = ts;
+      const res = landmarker.detectForVideo(video, ts);
+      lm = res.faceLandmarks && res.faceLandmarks[0] ? res.faceLandmarks[0] : null;
+    } catch (e) { lm = null; }
+    if (lm) processFace(lm, t); else processNoFace(t);
+    drawOverlay(lm);
+  } else checkWindow(t);
+  S.raf = requestAnimationFrame(loop);
+}
+
+function stopMonitor() {
+  if (!S.running && !stream) return;
+  const hadWin = S.winActive;
+  S.running = false; cancelAnimationFrame(S.raf);
+  if (stream) { if (!(window.parent !== window && window.parent.HEAMONCamera?.stream === stream)) stream.getTracks().forEach((tr) => tr.stop()); stream = null; }
+  video.srcObject = null; octx.clearRect(0, 0, overlay.width, overlay.height);
+  cancelWindow();
+  $('btnStart').disabled = false; $('btnStop').disabled = true; $('btnAnalyze').disabled = true; $('btnCancel').disabled = true;
+  setStatus(hadWin ? 'Monitor detenido. El análisis en curso se canceló (no se guardó).' : 'Monitor detenido.');
+}
+
+/* --------------------------------- eventos --------------------------------- */
+$('btnStart').addEventListener('click', startMonitor);
+$('btnStop').addEventListener('click', stopMonitor);
+$('btnAnalyze').addEventListener('click', () => {
+  if (!S.running || S.winActive) return;
+  startWindow(nowMs()); setStatus('Análisis de 30 s en curso. El monitor continúa activo.');
+});
+$('btnCancel').addEventListener('click', () => cancelWindow('Análisis cancelado. El monitor sigue activo.'));
+window.addEventListener('beforeunload', () => { if (stream && !(window.parent !== window && window.parent.HEAMONCamera?.stream === stream)) stream.getTracks().forEach((tr) => tr.stop()); });
+setInterval(() => {                                   // refresco de interfaz y cierre puntual de la ventana
+  const t = nowMs();
+  if (S.running) checkWindow(t);
+  ui();
+}, 250);
+
+/* Gancho de pruebas (no afecta al uso normal) */
+window.__HEAMON__ = {
+  get S() { return S; }, processFace, processNoFace, startWindow, checkWindow, ui, sCtx,
+  setCH(h) { CH = h; sCanvas.width = CFG.CW; sCanvas.height = CH; },
+  beginSim() { resetSession(); S.sim = true; S.running = true; S.simNow = 0; S.tStart = 0; $('btnAnalyze').disabled = false; $('btnStop').disabled = false; },
+  CFG
+};
+ui();
+</script>
+
+<script type="module">
+const $=id=>document.getElementById(id);
+const vid=$('video'), c=document.createElement('canvas'), ctx=c.getContext('2d');
+let sending=false, last=0, started=false, fsEnabled=false, myEpoch=0;
+const status=(s)=>{$('fsStatus').textContent=s;};
+const val=(v)=>typeof v==='number'&&Number.isFinite(v)?Math.round(v*100)+' %':'—';
+async function check(){try{const r=await fetch('/api/fatigue-status',{cache:'no-store'});const s=await r.json();fsEnabled=!!s.enabled;status(s.enabled?'FatigueSense disponible; esperando cámara.':('FatigueSense no habilitado: '+s.reason));}catch(e){status('Servidor de FatigueSense no accesible: '+e.message);}}
+async function tick(now){requestAnimationFrame(tick);if(!fsEnabled||!started||sending||vid.readyState<2||now-last<105)return;last=now;sending=true;const epoch=myEpoch;
+try{c.width=480;c.height=Math.max(240,Math.round(480*vid.videoHeight/vid.videoWidth));ctx.drawImage(vid,0,0,c.width,c.height);const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.68));if(!blob)throw Error('No se pudo codificar fotograma');
+const response=await fetch('/api/fatigue-frame',{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});const d=await response.json();if(epoch!==myEpoch||!started)return;
+if(!response.ok)throw Error(d.reason||'Fallo en el servidor');
+$('fsEyeL').textContent=val(d.eye_left);$('fsEyeR').textContent=val(d.eye_right);$('fsMouth').textContent=val(d.mouth);$('fsFocus').textContent=val(d.focus);
+status(d.note||'Clasificadores CNN activos. BiGRU en preparación.');
+}catch(e){if(epoch===myEpoch)status('Inferencia FatigueSense: '+e.message);}finally{sending=false;}}
+$('btnStart').addEventListener('click',()=>{started=true;myEpoch++;});
+$('btnStop').addEventListener('click',()=>{started=false;myEpoch++;});
+window.addEventListener('message', e=>{if(e.origin!==location.origin||e.source!==parent)return;
+  if(e.data?.type==='HEAMON_START'){$('btnStart').click();}
+  if(e.data?.type==='HEAMON_STOP'){$('btnStop').click();}
+});
+check();requestAnimationFrame(tick);
+</script>
+</body>
+</html>

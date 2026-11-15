@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Presión Arterial · demo del pipeline</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f7f9;--fg:#1b2330;--mut:#5b6678;--card:#fff;--line:#dfe3ea;--a:#c0392b;--b:#1f6feb;--ok:#1a7f4b;--no:#b45309}
+@media(prefers-color-scheme:dark){:root{--bg:#10141b;--fg:#e8ecf2;--mut:#9aa6b8;--card:#171d27;--line:#273041;--a:#ff6b5b;--b:#5aa2ff;--ok:#43c383;--no:#f0a24b}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:920px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.7rem;margin:.2em 0 .1em}h2{font-size:1.2rem;margin:0 0 .6em}p{margin:.4em 0}.mut{color:var(--mut);font-size:.92rem}
+.warn{border:1px solid var(--no);border-left:5px solid var(--no);background:var(--card);padding:10px 14px;border-radius:8px;margin:14px 0}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin:16px 0}
+.steps{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}.step{flex:1 1 170px;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:.9rem}
+.step b{display:block;color:var(--b)}.arrow{align-self:center;color:var(--mut)}
+.ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 18px;margin:8px 0 12px}
+label{display:block;font-size:.88rem;color:var(--mut)}label output{color:var(--fg);font-weight:600}input[type=range]{width:100%}
+canvas{width:100%;height:150px;display:block;border:1px solid var(--line);border-radius:8px;margin:4px 0 2px}
+.row{margin:10px 0}.bar{display:flex;align-items:center;gap:8px;font-size:.85rem;margin:2px 0}.bar span.t{width:70px;color:var(--mut)}
+.bar i{display:block;height:14px;border-radius:3px}.v{font-variant-numeric:tabular-nums}
+.res{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}.yes{color:var(--ok);font-weight:600}.nop{color:var(--no);font-weight:600}
+ul{margin:.3em 0;padding-left:1.2em}
+</style>
+</head>
+<body>
+<main>
+<h1>Presión Arterial</h1>
+<p class="mut">Estimación experimental de presión arterial desde la onda de pulso rPPG con deep learning · complemento de VitaSense</p>
+<div class="warn"><b>Prototipo de investigación. No es un dispositivo médico.</b> Esta página es una ilustración del método con datos sintéticos: <b>no mide presión arterial</b> ni ejecuta el modelo real.</div>
+
+<section>
+<h2>1. El pipeline</h2>
+<div class="steps">
+<div class="step"><b>PPG de contacto</b>125 Hz + PA de referencia (PulseDB, MIMIC, VitalDB)</div><div class="arrow">→</div>
+<div class="step"><b>Degradación</b>30 Hz, pasa-banda 0,7–3 Hz, ruido y movimiento: simula la webcam</div><div class="arrow">→</div>
+<div class="step"><b>ResNet 1D</b>ventana de 6 s, 3 canales: pulso y sus 2 derivadas</div><div class="arrow">→</div>
+<div class="step"><b>SBP / DBP</b>+ calibración por persona (VitaSense)</div>
+</div>
+</section>
+
+<section>
+<h2>2. Qué le pasa a la señal con una webcam</h2>
+<p class="mut">Modelo de juguete: la forma del pulso depende de la presión sistólica de manera inventada, solo para ver qué detalle se pierde. Es una versión simplificada de <code>degrade.py</code>.</p>
+<div class="ctl">
+<label>Frecuencia cardíaca <output id="oh">72</output> lpm<input id="hr" type="range" min="50" max="120" value="72"></label>
+<label>Sistólica del modelo de juguete <output id="os">120</output> mmHg<input id="sb" type="range" min="90" max="180" value="120"></label>
+<label>Relación señal/ruido <output id="on">15</output> dB<input id="sn" type="range" min="0" max="30" value="15"></label>
+<label><input id="mo" type="checkbox"> Movimiento de la cabeza</label>
+</div>
+<div class="mut">PPG de contacto · 125 Hz · 750 muestras</div><canvas id="c1"></canvas>
+<div class="mut">Señal tipo webcam · 30 Hz · 180 muestras (cada punto es un fotograma)</div><canvas id="c2"></canvas>
+<p class="mut">Con 30 muestras por segundo, la onda reflejada que cambia con la presión queda reducida a pocos puntos y el ruido la tapa con facilidad. Por eso el modelo se entrena con señales degradadas, y por eso no hay garantía de que la cámara conserve información útil de PA.</p>
+</section>
+
+<section id="live" hidden>
+<h2>3. Resultados de la corrida</h2>
+<p class="mut" id="meta"></p>
+<div id="blocks"></div>
+<div class="mut" style="margin-top:12px">Error de validación por época, MAE en mmHg (rojo = SBP, azul = DBP)</div><canvas id="c3"></canvas>
+</section>
+
+<section id="demo">
+<h2>3. Ejemplo de verificación (datos sintéticos)</h2>
+<p class="mut">Error medio absoluto en mmHg (menor es mejor), en 10 sujetos nuevos. Sirve para comprobar que el código distingue “hay información de PA” de “no la hay”. No dice nada sobre personas reales. Para ver tus resultados reales: <code>python -m presion_arterial.report --run runs/exp1</code></p>
+<div id="res"></div>
+</section>
+
+<section>
+<h2>4. Qué falta antes de poder hablar de PA real</h2>
+<ul>
+<li>Entrenar con datos reales (PulseDB u otro) y reportar el resultado, sea cual sea.</li>
+<li>Validar con video real y presión de referencia (BP4D+/V4V o datos propios), con distintas edades, tonos de piel y rangos de PA.</li>
+<li>Mejorar la etapa video → pulso con una red rPPG (por ejemplo, rPPG-Toolbox).</li>
+<li>Criterio de éxito: superar al predictor trivial con margen claro y cumplir 5 ± 8 mmHg en personas nuevas.</li>
+</ul>
+</section>
+</main>
+<script>
+const DATA=/*__DATA__*/null;
+const $=id=>document.getElementById(id),V=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const rng=s=>()=>((s=(s*1664525+1013904223)>>>0)/4294967296),
+gs=r=>Math.sqrt(-2*Math.log(r()+1e-12))*Math.cos(2*Math.PI*r());
+const beat=(p,sbp)=>{const s=(sbp-120)/20,ps=.2-.025*s,ws=Math.max(.07-.008*s,.03),pr=ps+.28-.06*s,ar=Math.min(.9,Math.max(.05,.42-.12*s));
+return Math.exp(-.5*((p-ps)/ws)**2)+ar*Math.exp(-.5*((p-pr)/.1)**2)};
+const mav=(x,w)=>{const n=x.length,h=w>>1,o=new Array(n);for(let i=0;i<n;i++){let s=0,c=0;for(let j=Math.max(0,i-h);j<=Math.min(n-1,i+h);j++){s+=x[j];c++}o[i]=s/c}return o};
+const z=x=>{const m=x.reduce((a,b)=>a+b,0)/x.length,sd=Math.sqrt(x.reduce((a,b)=>a+(b-m)**2,0)/x.length)||1;return x.map(v=>(v-m)/sd)};
+const bp=x=>{const a=mav(x,3),b=mav(x,43);return a.map((v,i)=>v-b[i])};
+function sim(){
+ const hr=+$('hr').value,sbp=+$('sb').value,snr=+$('sn').value,mot=$('mo').checked,r=rng(42);
+ $('oh').textContent=hr;$('os').textContent=sbp;$('on').textContent=snr;
+ const raw=[];let ph=.3;for(let i=0;i<750;i++){ph+=hr/60/125;raw.push(beat(ph%1,sbp)+.02*gs(r))}
+ const aa=mav(raw,4),x=[];for(let k=0;k<180;k++){const p=k*125/30,i=Math.floor(p),f=p-i;x.push(aa[i]*(1-f)+aa[Math.min(i+1,749)]*f)}
+ let y=z(bp(z(x)));
+ if(mot)y=y.map((v,k)=>{const t=k/30;return v+1.3*Math.exp(-.5*((t-3)/.25)**2)*Math.sin(2*Math.PI*2.2*t)});
+ const sg=Math.sqrt(y.reduce((a,b)=>a+b*b,0)/180/Math.pow(10,snr/10));
+ y=z(bp(y.map(v=>v+sg*gs(r))));
+ draw($('c1'),z(raw),125,false);draw($('c2'),y,30,true);
+ if(DATA)lines($('c3'),[DATA.history.map(h=>h.val_mae_sbp),DATA.history.map(h=>h.val_mae_dbp)],['--a','--b']);
+}
+function draw(cv,d,fs,dots){
+ const dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;
+ const g=cv.getContext('2d');g.scale(dpr,dpr);
+ const mn=Math.min(...d),mx=Math.max(...d),X=i=>8+i/(d.length-1)*(W-16),Y=v=>H-10-(v-mn)/(mx-mn||1)*(H-20);
+ g.strokeStyle=V('--line');g.lineWidth=1;for(let s=1;s<6;s++){g.beginPath();g.moveTo(X(s*fs),0);g.lineTo(X(s*fs),H);g.stroke()}
+ g.strokeStyle=dots?V('--b'):V('--a');g.lineWidth=2;g.beginPath();d.forEach((v,i)=>i?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v)));g.stroke();
+ if(dots){g.fillStyle=V('--b');d.forEach((v,i)=>{g.beginPath();g.arc(X(i),Y(v),2.2,0,7);g.fill()})}
+}
+['hr','sb','sn','mo'].forEach(i=>$(i).addEventListener('input',sim));
+addEventListener('resize',sim);matchMedia('(prefers-color-scheme: dark)').addEventListener('change',sim);
+const R=[
+ {c:'Con información de PA en la señal',s:[4.6,12.8],d:[7.7,9.1],ok:true,t:'El modelo supera al predictor trivial.'},
+ {c:'Sin información de PA en la señal',s:[13.6,12.8],d:[9.3,9.1],ok:false,t:'No lo supera: el código no se deja engañar.'}];
+const bar=(n,v,c,mx=16)=>`<div class="bar"><span class="t">${n}</span><i style="width:${v/mx*60}%;background:${c}"></i><span class="v">${v.toFixed(1)}</span></div>`;
+$('res').innerHTML=R.map(r=>`<div class="res"><b>${r.c}</b>
+<div class="row"><div class="mut">Sistólica (SBP)</div>${bar('Modelo',r.s[0],'var(--b)')}${bar('Trivial',r.s[1],'var(--mut)')}
+<div class="mut">Diastólica (DBP)</div>${bar('Modelo',r.d[0],'var(--b)')}${bar('Trivial',r.d[1],'var(--mut)')}</div>
+<span class="${r.ok?'yes':'nop'}">${r.t}</span></div>`).join('')+
+'<p class="mut">“Trivial” = predecir siempre la media del entrenamiento. Para declarar mejora se exige una ganancia de más de 1 mmHg.</p>';
+const f=(v,d=1)=>v==null?'–':v.toFixed(d);
+function block(b){const K=['sbp','dbp'],mx=Math.max(1,...K.flatMap(k=>[b.res[k].model.mae,b.res[k].baseline.mae]));
+ return `<div class="res"><b>${b.title}</b>`+K.map(k=>{const x=b.res[k],m=x.model;
+ return `<div class="row"><div class="mut">${k=='sbp'?'Sistólica (SBP)':'Diastólica (DBP)'} · n=${m.n} · ME ${f(m.me)} ± ${f(m.sd)} · r ${f(m.r,2)} · BHS ${m.bhs} · 5±8 mmHg: ${m.aami?'cumple':'no cumple'}</div>${bar('Modelo',m.mae,'var(--b)',mx)}${bar('Trivial',x.baseline.mae,'var(--mut)',mx)}<span class="${x.beats_baseline?'yes':'nop'}">${x.beats_baseline?'Supera':'No supera'} al trivial con margen claro (ganancia ${f(x.mae_gain,2)} mmHg)</span></div>`}).join('')+'</div>'}
+function lines(cv,S,cols){const dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);
+ const all=S.flat(),mn=Math.min(...all),mx=Math.max(...all),n=S[0].length,X=i=>10+i/Math.max(n-1,1)*(W-20),Y=v=>H-12-(v-mn)/(mx-mn||1)*(H-24);
+ S.forEach((d,k)=>{g.strokeStyle=V(cols[k]);g.lineWidth=2;g.beginPath();d.forEach((v,i)=>i?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v)));g.stroke()});
+ g.fillStyle=V('--mut');g.font='11px system-ui';g.fillText(mx.toFixed(1),12,12);g.fillText(mn.toFixed(1),12,H-2)}
+if(DATA){$('demo').hidden=true;$('live').hidden=false;const s=DATA.splits||{};
+ $('meta').innerHTML=`Corrida <b>${DATA.run}</b> · ${DATA.synthetic?'<span class="nop">datos SINTÉTICOS: no dicen nada de PA real</span>':'datos: '+(DATA.data||'?')} · ${DATA.epochs} épocas · sujetos train/val/test: ${s.train??'?'}/${s.val??'?'}/${s.test??'?'} · generado ${DATA.generated}`;
+ $('blocks').innerHTML=DATA.blocks.map(block).join('')+'<p class="mut">“Trivial” = predecir la media del entrenamiento (en modo calibrado, arrastrar la lectura del tensiómetro). Para declarar mejora se exige una ganancia de más de 1 mmHg.</p>'}
+sim();
+</script>
+</body>
+</html>

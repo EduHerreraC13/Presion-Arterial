@@ -1,0 +1,6 @@
+numpy>=1.24
+scipy>=1.10
+torch>=2.1
+# Opcionales
+h5py>=3.8        # solo para scripts/prepare_dataset.py (PulseDB / MAT v7.3)
+pytest>=7.0      # solo para correr los tests
