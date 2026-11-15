@@ -14,7 +14,7 @@
 .source-list a{color:#8ddbd5;overflow-wrap:anywhere}
 </style></head><body><main>
 <div class="top"><div><h1>Monitoreo cardiovascular</h1><p style="margin:5px 0">rPPG experimental · Dashboard conectado a cámara · Sin entradas manuales</p></div><span class="tag">Investigación · No es un dispositivo médico</span></div>
-<div class="layout"><section class="card"><h2>Captura en vivo</h2><div class="cam"><video id="video" autoplay playsinline muted></video><canvas id="overlay"></canvas></div><div class="buttons"><button id="start">Activar cámara</button><button id="stop" class="secondary" disabled>Detener</button></div><div class="bar"><i id="progress"></i></div><p id="status" role="status" aria-live="polite">Cámara desactivada. Colócate frente a ella con iluminación estable y minimiza el movimiento.</p><small>Para rPPG solo se envían promedios RGB y tiempos al servidor local; no se transmiten fotogramas en este módulo. Necesita internet inicialmente para descargar MediaPipe.</small></section>
+<div class="layout"><section class="card"><h2>Captura en vivo</h2><div class="cam"><video id="video" autoplay playsinline muted></video><canvas id="overlay"></canvas></div><div class="buttons"><button id="start">Activar cámara</button><button id="stop" class="secondary" disabled>Detener</button></div><div class="bar"><i id="progress"></i></div><p id="status" role="status" aria-live="polite">Cámara desactivada. Colócate frente a ella con iluminación estable y minimiza el movimiento.</p><small>Para rPPG se envía al servidor un promedio RGB combinado de regiones de frente y pómulos, junto con sus tiempos; no se transmiten fotogramas en este módulo. Necesita internet inicialmente para descargar MediaPipe.</small></section>
 <section class="card"><h2>Resultados de la cámara</h2><div class="metrics"><div class="metric"><b id="bpm">—</b><span>Frecuencia cardíaca (lpm), experimental</span></div><div class="metric"><b id="quality">—</b><span>Concentración del pico espectral (no es exactitud)</span></div><div class="metric"><b id="sbp">No disp.</b><span>Sistólica (mmHg) · DL experimental</span></div><div class="metric"><b id="dbp">No disp.</b><span>Diastólica (mmHg) · DL experimental</span></div></div><p id="reason" class="mut">Para habilitar PAS/PAD, descarga el checkpoint original del estudio y carga el servidor con --fabian-model. No equivale a medición clínica.</p><p class="mut" id="fps"></p></section></div>
 <section class="card full"><h2>Señal rPPG procesada</h2><canvas id="wave" width="960" height="150"></canvas><small>Amplitud normalizada arbitraria; no representa presión en mmHg. Se actualiza automáticamente después de obtener una ventana válida.</small></section>
 <section class="card full"><h2>Alcance y limitaciones</h2><p>La cámara permite extraer variaciones ópticas relacionadas con pulso, pero no constituye un tensiómetro. La predicción de presión arterial solo se habilita con un checkpoint compatible, previamente entrenado. Incluso entonces se mostrará como <b>inferencia experimental no calibrada ni validada</b>, no como medición ni aptitud clínica.</p><p>Los indicadores MAE, ME, desviación, correlación y cumplimiento de normas pertenecen a la evaluación de un modelo contra presiones de referencia, y <b>no pueden calcularse desde una webcam sin etiquetas reales</b>. El dashboard original del repositorio se conserva para consultar esos experimentos.</p></section>
@@ -23,19 +23,118 @@
 <script type="module">
 import {FaceLandmarker,FilesetResolver} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 const $=id=>document.getElementById(id);const video=$('video'),canvas=$('overlay'),ctx=canvas.getContext('2d'),scratch=document.createElement('canvas'),sc=scratch.getContext('2d',{willReadFrequently:true});
+// Muestreo de las regiones faciales a resolución reducida: no cambia el muestreo temporal.
+const SAMPLE_WIDTH=320;const SAMPLE_HEIGHT=180;
+scratch.width=SAMPLE_WIDTH;scratch.height=SAMPLE_HEIGHT;
+
 let model=null,stream=null,on=false,lastFrame=-1,lastSample=0,lastPost=0,busy=false,samples=[],generation=0;
 const status=s=>$('status').textContent=s;
 
 async function setup(){const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');model=await FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'CPU'},runningMode:'VIDEO',numFaces:1});}
-$('start').onclick=async()=>{const g=++generation;$('start').disabled=true;status('Cargando detección facial y solicitando acceso a cámara…');try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];lastSample=0;lastPost=0;$('stop').disabled=false;status('Detectando frente y reuniendo señal…');requestAnimationFrame(loop);}catch(e){status('No se pudo iniciar: '+e.message);$('start').disabled=false;}};
+$('start').onclick=async()=>{const g=++generation;$('start').disabled=true;status('Cargando detección facial y solicitando acceso a cámara…');try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];lastSample=0;lastPost=0;$('stop').disabled=false;status('Detectando frente y pómulos; reuniendo señal…');requestAnimationFrame(loop);}catch(e){status('No se pudo iniciar: '+e.message);$('start').disabled=false;}};
 $('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status('Captura detenida.');};
 async function send(){if(busy||samples.length<90)return;busy=true;try{const windowSamples=samples.slice(-450);const resp=await fetch('/api/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timestamps:windowSamples.map(x=>x.t),rgb:windowSamples.map(x=>x.rgb)})});const r=await resp.json();if(!on)return;$('bpm').textContent=r.bpm==null?'—':r.bpm.toFixed(0);$('quality').textContent=r.peak_fraction==null?'—':(100*r.peak_fraction).toFixed(0)+' %';$('sbp').textContent=r.sbp==null?'No disp.':r.sbp.toFixed(0)+'*';$('dbp').textContent=r.dbp==null?'No disp.':r.dbp.toFixed(0)+'*';$('reason').textContent=[r.reason,r.bp_status].filter(Boolean).join(' · ');$('fps').textContent=r.fps?'Muestreo efectivo: '+r.fps+' fps':'';if(r.waveform)draw(r.waveform);}catch(e){if(on){$('reason').textContent='Error al contactar servidor Python: '+e.message;}}finally{busy=false;}}
 function draw(a){const c=$('wave'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);g.strokeStyle='#7fd3cb';g.lineWidth=2;g.beginPath();a.forEach((v,i)=>{const x=10+i/(a.length-1)*(w-20),y=h/2-v*22;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();}
-function loop(now){if(!on)return;requestAnimationFrame(loop);if(video.readyState<2||video.currentTime===lastFrame||now-lastSample<34)return;lastFrame=video.currentTime;lastSample=now;let face=null;try{face=model.detectForVideo(video,now).faceLandmarks[0];}catch(e){status('Error del detector: '+e.message);return;}ctx.clearRect(0,0,canvas.width,canvas.height);if(!face){samples=[];$('progress').style.width='0%';status('Rostro no detectado: mira la cámara de frente.');return;}
-const W=canvas.width,H=canvas.height,x0=Math.min(face[107].x,face[336].x)*W,x1=Math.max(face[107].x,face[336].x)*W,y0=face[10].y*H,y1=Math.min(face[107].y,face[336].y)*H-2;
-if(x1-x0<16||y1-y0<7){samples=[];status('Frente insuficientemente visible.');return;}
-const w=Math.round(x1-x0),h=Math.round(y1-y0);scratch.width=w;scratch.height=h;sc.drawImage(video,x0,y0,x1-x0,y1-y0,0,0,w,h);const pix=sc.getImageData(0,0,w,h).data;const rgb=[0,0,0];let count=0;for(let i=0;i<pix.length;i+=16){rgb[0]+=pix[i];rgb[1]+=pix[i+1];rgb[2]+=pix[i+2];count++;}rgb.forEach((v,i)=>rgb[i]=v/count);
-ctx.strokeStyle='#7fd3cb';ctx.lineWidth=3;ctx.strokeRect(x0,y0,x1-x0,y1-y0);samples.push({t:now/1000,rgb});while(samples.length&&samples[0].t<now/1000-24)samples.shift();const duration=samples.at(-1).t-samples[0].t;$('progress').style.width=Math.min(duration/12*100,100)+'%';status('Captura automática: '+duration.toFixed(1)+' s de señal continua. '+(duration<12?'Mantente quieto.':'Analizando…'));
-if(duration>=12&&samples.length>=90&&now-lastPost>2500){lastPost=now;send();}}
+// 6 subregiones de frente + 2 de cada pómulo; no se importa ningún estimador de otras ramas.
+function makeRegions(face){
+  const pt=(i)=>[face[i].x,face[i].y];
+  const minX=Math.min(face[107].x,face[336].x)+.006;
+  const maxX=Math.max(face[107].x,face[336].x)-.006;
+  const top=face[10].y+.012;
+  const bottom=Math.min(face[107].y,face[336].y)-.011;
+  const regions=[];
+  if(maxX-minX>.05&&bottom-top>.018){
+    for(let row=0;row<2;row++)for(let col=0;col<3;col++){
+      const left=minX+(maxX-minX)*(col/3)+.002;
+      const right=minX+(maxX-minX)*((col+1)/3)-.002;
+      const ytop=top+(bottom-top)*(row/2)+.002;
+      const ybottom=top+(bottom-top)*((row+1)/2)-.002;
+      regions.push({group:'forehead',poly:[[left,ytop],[right,ytop],[right,ybottom],[left,ybottom]]});
+    }
+  }
+  // Los vértices siguen la malla facial. Cada mejilla está dividida en dos sectores.
+  const cheeks=[
+    [pt(117),pt(118),pt(101),pt(205),pt(187),pt(123)],
+    [pt(346),pt(347),pt(330),pt(425),pt(411),pt(352)]
+  ];
+  for(let side=0;side<cheeks.length;side++){
+    const poly=cheeks[side];
+    const center=poly.reduce((a,p)=>[a[0]+p[0]/poly.length,a[1]+p[1]/poly.length],[0,0]);
+    // Dos polígonos por mejilla, compartiendo el centro; evitan un único promedio de zona grande.
+    regions.push({group:side===0?'left':'right',poly:[poly[0],poly[1],poly[2],center,poly[5]]});
+    regions.push({group:side===0?'left':'right',poly:[poly[2],poly[3],poly[4],poly[5],center]});
+  }
+  return regions;
+}
+function insidePoly(x,y,poly){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[i],b=poly[j];
+    if(((a[1]>y)!==(b[1]>y)) && x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1]+1e-12)+a[0]) inside=!inside;
+  }
+  return inside;
+}
+function measurePolygon(img,polygon){
+  const W=SAMPLE_WIDTH,H=SAMPLE_HEIGHT;
+  const poly=polygon.map(p=>[p[0]*W,p[1]*H]);
+  const minx=Math.max(0,Math.floor(Math.min(...poly.map(p=>p[0]))));
+  const maxx=Math.min(W-1,Math.ceil(Math.max(...poly.map(p=>p[0]))));
+  const miny=Math.max(0,Math.floor(Math.min(...poly.map(p=>p[1]))));
+  const maxy=Math.min(H-1,Math.ceil(Math.max(...poly.map(p=>p[1]))));
+  const accum=[0,0,0];let count=0,sat=0;
+  for(let y=miny;y<=maxy;y+=2)for(let x=minx;x<=maxx;x+=2){
+    if(!insidePoly(x+.5,y+.5,poly))continue;
+    const i=(y*W+x)*4,r=img[i],g=img[i+1],b=img[i+2];
+    if(Math.min(r,g,b)<8||Math.max(r,g,b)>248){sat++;continue;}
+    accum[0]+=r;accum[1]+=g;accum[2]+=b;count++;
+  }
+  if(count<8||sat>count*.8)return null;
+  return accum.map(v=>v/count);
+}
+function combineRegions(regions,values){
+  const groupMeans={};
+  for(const group of ['forehead','left','right']){
+    const val=regions.flatMap((r,i)=>r.group===group&&values[i]?[values[i]]:[]);
+    if(val.length){
+      // Mediana espacial para evitar que una subregión iluminada o con sombra domine.
+      groupMeans[group]=[0,1,2].map(c=>{const v=val.map(x=>x[c]).sort((a,b)=>a-b);return v[Math.floor(v.length/2)];});
+    }
+  }
+  const weights={forehead:0.5,left:0.25,right:0.25};
+  const available=Object.keys(groupMeans),total=available.reduce((v,g)=>v+weights[g],0);
+  if(!available.length)return null;
+  return [0,1,2].map(c=>available.reduce((v,g)=>v+weights[g]*groupMeans[g][c],0)/total);
+}
+function drawRegion(poly,valid){
+  ctx.strokeStyle=valid?'#7fd3cb':'#edaa66';ctx.lineWidth=2;
+  ctx.beginPath();poly.forEach((p,i)=>i?ctx.lineTo(p[0]*canvas.width,p[1]*canvas.height):ctx.moveTo(p[0]*canvas.width,p[1]*canvas.height));
+  ctx.closePath();ctx.stroke();
+}
+function loop(now){
+  if(!on)return;requestAnimationFrame(loop);
+  if(video.readyState<2||video.currentTime===lastFrame||now-lastSample<34)return;
+  lastFrame=video.currentTime;lastSample=now;
+  let face=null;
+  try{face=model.detectForVideo(video,now).faceLandmarks[0];}catch(e){status('Error del detector: '+e.message);return;}
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!face){samples=[];$('progress').style.width='0%';status('Rostro no detectado: mira la cámara de frente.');return;}
+  sc.drawImage(video,0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT);
+  const pixels=sc.getImageData(0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT).data;
+  const regions=makeRegions(face);
+  const values=regions.map(r=>measurePolygon(pixels,r.poly));
+  regions.forEach((r,i)=>drawRegion(r.poly,Boolean(values[i])));
+  const rgb=combineRegions(regions,values);
+  const valid=values.filter(Boolean).length;
+  if(!rgb||valid<3){
+    samples=[];$('progress').style.width='0%';
+    status('Rostro insuficientemente visible: ajusta iluminación, frente y pómulos.');return;
+  }
+  samples.push({t:now/1000,rgb});
+  while(samples.length&&samples[0].t<now/1000-24)samples.shift();
+  const duration=samples.at(-1).t-samples[0].t;
+  $('progress').style.width=Math.min(duration/12*100,100)+'%';
+  status('Captura automática: '+duration.toFixed(1)+' s de señal. '+valid+'/'+regions.length+' polígonos útiles. '+(duration<12?'Mantente quieto.':'Analizando…'));
+  if(duration>=12&&samples.length>=90&&now-lastPost>2500){lastPost=now;send();}
+}
 window.addEventListener('message', e => { if(e.origin!==location.origin || e.source!==parent) return; if(e.data?.type==='HEAMON_START'&&!on) $('start').click(); if(e.data?.type==='HEAMON_STOP'&&on) $('stop').click(); });
 </script></body></html>
