@@ -1,0 +1,6 @@
+# Minimal production inference dependencies (no training, no optional FatigueSense).
+# Tested environment target: Python 3.13 / TensorFlow 2.20 with legacy tf-keras.
+numpy>=1.26,<3
+scipy>=1.13,<2
+tensorflow==2.20.0
+tf-keras==2.20.1

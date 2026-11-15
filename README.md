@@ -106,3 +106,7 @@ Do not upload `.venv/`, downloaded weights (`modelos/`), datasets, videos, API s
 **Implemented:** shared camera UI; EN/ES interface; cardiovascular estimators; optional legacy BP checkpoint adapter; eye/respiration heuristics; FatigueSense adapter.
 
 **Not demonstrated:** clinical BP accuracy, validated fatigue diagnosis, reliable breathing under all movement conditions, astronaut-specific validation, or fully tested FatigueSense performance across devices.
+
+## Web deployment (Docker / Render)
+
+See [DESPLIEGUE_WEB.md](DESPLIEGUE_WEB.md). The viewer needs only a browser; the Python 3.13 inference backend remains on the server. This web deployment is experimental and requires an adequately sized host.

@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import threading
+from urllib.parse import urlsplit, unquote
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import numpy as np
@@ -18,6 +21,12 @@ MODEL_STATUS = 'Sin checkpoint real: PA no disponible'
 FATIGUE = None
 FATIGUE_STATUS = 'No se inició con --fatiguesense-root'
 LOW_FPS_MODE = False
+# Cap concurrent inference to prevent one public deployment from being overloaded.
+INFERENCE_SLOTS = threading.BoundedSemaphore(value=2)
+PUBLIC_ASSETS = frozenset({
+    '/index.html', '/camara_dashboard.html', '/fatiga_respiracion.html',
+    '/heamon_i18n.js', '/favicon.ico',
+})
 
 def infer(data):
     ts = np.asarray(data.get('timestamps', []), float)
@@ -85,54 +94,102 @@ def infer(data):
     return result
 
 class Handler(SimpleHTTPRequestHandler):
+    """Serve only browser assets; do not expose Python, model files or datasets."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def end_headers(self):
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        self.send_header('Permissions-Policy', 'camera=(self), microphone=()')
+        self.send_header('X-Frame-Options', 'SAMEORIGIN')
+        super().end_headers()
+
     def do_GET(self):
-        if self.path == '/api/fatigue-status':
-            self.reply({'enabled':FATIGUE is not None,'reason':FATIGUE_STATUS})
+        route = unquote(urlsplit(self.path).path)
+        if route == '/api/health':
+            self.reply({'status': 'ok'}, 200)
+            return
+        if route == '/api/fatigue-status':
+            self.reply({'enabled': FATIGUE is not None, 'reason': FATIGUE_STATUS})
+            return
+        if route == '/':
+            self.send_response(302)
+            self.send_header('Location', '/index.html')
+            self.end_headers()
+            return
+        if route not in PUBLIC_ASSETS:
+            self.send_error(404, 'Not found')
             return
         return super().do_GET()
+
+    def do_HEAD(self):
+        route = unquote(urlsplit(self.path).path)
+        if route not in PUBLIC_ASSETS:
+            self.send_error(404, 'Not found')
+            return
+        return super().do_HEAD()
+
     def reply(self, answer, code=200):
         blob=json.dumps(answer,ensure_ascii=False).encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type','application/json; charset=utf-8')
         self.send_header('Cache-Control','no-store')
         self.send_header('Content-Length',str(len(blob)))
-        self.end_headers();self.wfile.write(blob)
+        self.end_headers()
+        self.wfile.write(blob)
+
     def do_POST(self):
-        if self.path == '/api/fatigue-frame':
-            if FATIGUE is None:
-                return self.reply({'reason':FATIGUE_STATUS},503)
+        # Prevent cross-origin form/API requests from other websites.
+        origin = self.headers.get('Origin')
+        if origin:
+            origin_url = urlsplit(origin)
+            host = self.headers.get('Host', '')
+            if origin_url.scheme not in ('http', 'https') or origin_url.netloc.lower() != host.lower():
+                return self.reply({'status': 'error', 'reason': 'Cross-origin request rejected'}, 403)
+        route = urlsplit(self.path).path
+        if route not in ('/api/estimate', '/api/fatigue-frame'):
+            self.send_error(404)
+            return
+        if not INFERENCE_SLOTS.acquire(blocking=False):
+            return self.reply({'status': 'busy', 'reason': 'Server busy; retry shortly'}, 503)
+        try:
+            if route == '/api/fatigue-frame':
+                if FATIGUE is None:
+                    return self.reply({'reason': FATIGUE_STATUS}, 503)
+                try:
+                    n=int(self.headers.get('Content-Length','0'))
+                    if n<=100 or n>350000: raise ValueError('Fotograma JPEG demasiado grande o vacío')
+                    if self.headers.get('Content-Type','').split(';')[0]!='image/jpeg':
+                        raise ValueError('Se esperaba image/jpeg')
+                    response=FATIGUE.process_jpeg(self.rfile.read(n))
+                    return self.reply(response)
+                except Exception as exc:
+                    return self.reply({'reason':str(exc)},400)
             try:
                 n=int(self.headers.get('Content-Length','0'))
-                if n<=100 or n>350000: raise ValueError('Fotograma JPEG demasiado grande o vacío')
-                if self.headers.get('Content-Type','').split(';')[0]!='image/jpeg':
-                    raise ValueError('Se esperaba image/jpeg')
-                response=FATIGUE.process_jpeg(self.rfile.read(n))
-                self.reply(response)
+                if n <= 0 or n > 200000:
+                    raise ValueError('Solicitud demasiado grande o vacía')
+                if self.headers.get('Content-Type','').split(';')[0].strip() != 'application/json':
+                    raise ValueError('Se esperaba application/json')
+                payload=json.loads(self.rfile.read(n))
+                answer=infer(payload)
+                code=200
             except Exception as exc:
-                self.reply({'reason':str(exc)},400)
-            return
-        if self.path != '/api/estimate':
-            self.send_error(404); return
-        try:
-            n=int(self.headers.get('Content-Length','0'))
-            if n <= 0 or n > 200000:
-                raise ValueError('Solicitud demasiado grande o vacía')
-            payload=json.loads(self.rfile.read(n))
-            answer=infer(payload)
-            code=200
-        except Exception as exc:
-            answer={'status':'error','reason':str(exc),'sbp':None,'dbp':None,'bpm':None}
-            code=400
-        self.reply(answer,code)
+                answer={'status':'error','reason':str(exc),'sbp':None,'dbp':None,'bpm':None}
+                code=400
+            return self.reply(answer,code)
+        finally:
+            INFERENCE_SLOTS.release()
 
 def main():
     global MODEL, MODEL_STATUS, FATIGUE, FATIGUE_STATUS, LOW_FPS_MODE
     ap=argparse.ArgumentParser()
     ap.add_argument('--ckpt',help='Checkpoint PyTorch propio (formato .pt, NO compatible con .h5)')
     ap.add_argument('--fabian-model',help='Modelo real Keras .h5 de Schrumpf et al. (2021), investigación EXCLUSIVAMENTE')
-    ap.add_argument('--port',type=int,default=8765)
+    ap.add_argument('--host', default='127.0.0.1', help='Bind address; use 0.0.0.0 behind an HTTPS reverse proxy')
+    ap.add_argument('--port',type=int,default=int(os.environ.get('PORT', '8765')))
     ap.add_argument('--low-fps',action='store_true',help='Permite ~7–12 FPS de forma experimental; NO valida BPM ni presión arterial')
     ap.add_argument('--fatiguesense-root',help='Ruta al repositorio original FatigueSense clonado (pesos reales se descargan)')
     ap.add_argument('--fatigue-fps',type=float,default=10.0,help='FPS objetivo del puente FatigueSense; predeterminado 10')
@@ -160,8 +217,8 @@ def main():
         except Exception as e:
             FATIGUE_STATUS='No se pudo cargar FatigueSense: '+str(e)
             print('ADVERTENCIA:',FATIGUE_STATUS)
-    print(f'Abre http://127.0.0.1:{args.port}/index.html')
+    print(f'HEAMON listening on {args.host}:{args.port}; locally open http://127.0.0.1:{args.port}/index.html')
     print('PA: se transmiten RGB/tiempos. FatigueSense opcional: JPEG local de fotogramas reducidos.')
-    ThreadingHTTPServer(('127.0.0.1',args.port),Handler).serve_forever()
+    ThreadingHTTPServer((args.host,args.port),Handler).serve_forever()
 
 if __name__=='__main__': main()
