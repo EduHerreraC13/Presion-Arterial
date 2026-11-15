@@ -78,9 +78,24 @@ def infer(data):
         groups = [[c for c in candidates if abs(c['bpm']-anchor['bpm'])<=10] for anchor in candidates]
         agreed=max(groups,key=len) if groups else []
         if len(agreed) < 2:
-            return {'status':'no_evaluable','reason':'Calibrando: frente y pómulos no concuerdan; revisa luz y movimiento','bpm':None,'sbp':None,'dbp':None,'fps':round(fps,1),'roi_count':len(candidates)}
+            # Fallback conservador: una sola región puede dar un candidato útil
+            # si su calidad es excepcional. El navegador exige DOS ventanas
+            # temporalmente consistentes antes de mostrarlo.
+            strong = [c for c in candidates if c['snr_db'] >= 4.0 and c['peak_fraction'] >= 0.65]
+            if strong:
+                agreed = [max(strong, key=lambda c: c['snr_db'] + 5*c['peak_fraction'])]
+                mode = 'single_region_high_quality'
+            else:
+                return {'status':'no_evaluable',
+                        'reason':'Analizando: regiones sin consenso o señal espectral débil',
+                        'bpm':None,'sbp':None,'dbp':None,
+                        'fps':round(fps,1),'roi_count':0,
+                        'candidate_count':len(candidates)}
+        else:
+            mode = 'multi_region_consensus'
     else:
         agreed=candidates
+        mode='single_region_legacy'
     if not agreed:
         return {'status':'no_evaluable','reason':'Señal pulsátil no fiable; mantente quieto e ilumina el rostro','bpm':None,'sbp':None,'dbp':None,'fps':round(fps,1)}
     weights=np.array([max(c['snr_db'],1.0) for c in agreed])
@@ -90,11 +105,11 @@ def infer(data):
     pulse=chosen['pulse']
     low=fps<12
     result={'status':'experimental_low_fps' if low else 'experimental',
-            'reason':'Consenso entre regiones; medición experimental no validada',
+            'reason':('Señal de una región con alta calidad; confirmación temporal requerida' if mode=='single_region_high_quality' else 'Consenso entre regiones; medición experimental no validada'),
             'bpm':round(candidate_bpm,1),'peak_fraction':round(float(np.mean([c['peak_fraction'] for c in agreed])),3),
             'fps':round(fps,1),'seconds':round(elapsed,1),'roi_count':len(agreed),
             'snr_db':round(float(np.mean([c['snr_db'] for c in agreed])),1),
-            'algorithm':chosen.get('algorithm','CHROM'),
+            'algorithm':chosen.get('algorithm','CHROM'),'quality_mode':mode,'candidate_count':len(candidates),
             'low_fps':low,'sbp':None,'dbp':None,'bp_status':MODEL_STATUS,
             'waveform':np.round(pulse[-min(len(pulse),240):],3).tolist(), 'model_loaded':MODEL is not None}
     if MODEL is not None:
