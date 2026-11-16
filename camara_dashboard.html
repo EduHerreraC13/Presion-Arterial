@@ -44,9 +44,11 @@
 <p class="monitor-meta" id="medianStatus">Primer resumen después de 15 segundos de lecturas.</p>
 </section>
 <section class="card full"><h2>Señal rPPG procesada</h2><canvas id="wave" width="960" height="150"></canvas><small>Amplitud normalizada arbitraria; no representa presión en mmHg. Se actualiza automáticamente después de obtener una ventana válida.</small></section>
+<section class="card full"><h2>Exportar resultados</h2><p class="mut">El reporte PDF incluye las últimas lecturas en vivo, el último resumen de medianas de 15 segundos y la gráfica rPPG capturada al exportar. Se habilita al completarse la primera mediana con al menos un BPM válido.</p><button id="cardioPdf" type="button" disabled>Descargar reporte PDF</button><p class="mut" id="cardioPdfStatus">Disponible después del primer resumen válido de 15 segundos.</p></section>
 <section class="card full"><h2>Alcance y limitaciones</h2><p>La cámara permite extraer variaciones ópticas relacionadas con pulso, pero no constituye un tensiómetro. La predicción de presión arterial solo se habilita con un checkpoint compatible, previamente entrenado. Incluso entonces se mostrará como <b>inferencia experimental no calibrada ni validada</b>, no como medición ni aptitud clínica.</p><p>Los indicadores MAE, ME, desviación, correlación y cumplimiento de normas pertenecen a la evaluación de un modelo contra presiones de referencia, y <b>no pueden calcularse desde una webcam sin etiquetas reales</b>. El dashboard original del repositorio se conserva para consultar esos experimentos.</p></section>
 </main>
 <script src="heamon_i18n.js"></script>
+<script src="yanqhaycare_pdf.js"></script>
 <script type="module">
 import {FaceLandmarker,FilesetResolver} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 const $=id=>document.getElementById(id);const video=$('video'),canvas=$('overlay'),ctx=canvas.getContext('2d'),scratch=document.createElement('canvas'),sc=scratch.getContext('2d',{willReadFrequently:true});
@@ -63,15 +65,19 @@ const unavailable=()=>i18n('Not available','No disponible');
 // Independent readout tracks. Median bins use newly returned readings only.
 const MEDIAN_PERIOD_MS=15000;
 let medianBatch=[],medianStarted=0,medianSequence=0;
+let pdfMedian=null,pdfLive=null,pdfWaveform=null;
 const numeric=v=>typeof v==='number'&&Number.isFinite(v);
 function median(values){const a=[...values].sort((x,y)=>x-y),n=a.length;return n?(n%2?a[(n-1)/2]:(a[n/2-1]+a[n/2])/2):null;}
 function numericMedian(key){return median(medianBatch.map(v=>v[key]).filter(numeric));}
 function clearMedian(){
-  medianBatch=[];medianStarted=0;medianSequence=0;
+  medianBatch=[];medianStarted=0;medianSequence=0;pdfMedian=null;pdfLive=null;pdfWaveform=null;
+  $('cardioPdf').disabled=true;
+  $('cardioPdfStatus').textContent=i18n('Available after a valid 15-second median.','Disponible después de una mediana válida de 15 segundos.');
   for(const id of ['medianBpm','medianQuality','medianSbp','medianDbp'])$(id).textContent='—';
   $('medianStatus').textContent=i18n('First median after 15 seconds of readings.','Primera mediana tras 15 segundos de lecturas.');
 }
 function renderMedian(){
+  const selected={bpm:numericMedian('bpm'),quality:numericMedian('quality'),sbp:numericMedian('sbp'),dbp:numericMedian('dbp')};
   const vals=[['medianBpm','bpm',''],['medianQuality','quality',' %'],['medianSbp','sbp','*'],['medianDbp','dbp','*']];
   for(const [id,key,suffix] of vals){
     const v=numericMedian(key);
@@ -79,6 +85,13 @@ function renderMedian(){
   }
   medianSequence++;
   const count=medianBatch.length;
+  // Freeze each completed interval separately from the current medianBatch.
+  // A quality-only median is not sufficient to release the export control.
+  if(selected.bpm!==null){
+    pdfMedian={...selected,count,sequence:medianSequence,at:new Date()};
+    $('cardioPdf').disabled=false;
+    $('cardioPdfStatus').textContent=i18n('Ready: export the latest completed median and current live readings.','Listo: exportar la última mediana completada y las lecturas actuales.');
+  }
   $('medianStatus').textContent=i18n('15-second summary #','Resumen de 15 segundos n.º ')+medianSequence+
     ' · '+count+' '+i18n('camera readings. Missing values excluded for each metric.','lecturas de cámara. Se excluyen los valores ausentes de cada indicador.');
 }
@@ -122,12 +135,55 @@ async function send(){
       ?i18n('Signal unavailable; improve lighting and reduce movement.','Señal no disponible; mejora la iluminación y reduce el movimiento.')
       :i18n('Live experimental estimate; may change between updates.','Estimación experimental en vivo; puede cambiar entre actualizaciones.');
     $('fps').textContent=r.fps?i18n('Effective sampling: ','Muestreo efectivo: ')+r.fps+' fps':'';
+    pdfLive={...live,at:new Date(),fps:r.fps??null,reason:r.reason??''};
     addLiveReading(live,performance.now());
-    if(Array.isArray(r.waveform))draw(r.waveform);
+    if(Array.isArray(r.waveform)){pdfWaveform=r.waveform.slice();draw(r.waveform);}
   }catch(e){if(on&&requestGeneration===generation){
     $('reason').textContent=i18n('Server error: ','Error del servidor: ')+e.message;
   }}finally{busy=false;}
 }
+function cardioPdfReport(){
+  if(!pdfMedian||pdfMedian.bpm===null)return;
+  const es=window.HEAMONi18n?.language==='es';
+  const fmt=(v,unit='',dec=0)=>Number.isFinite(v)?v.toFixed(dec)+unit:'—';
+  const T=window.YanqhayPDF;
+  if(!T)return;
+  const live=pdfLive||{};
+  const metrics=[
+    [es?'Frecuencia cardíaca':'Heart rate',fmt(live.bpm,' BPM'),fmt(pdfMedian.bpm,' BPM')],
+    [es?'Concentración espectral':'Spectral peak concentration',fmt(live.quality,' %'),fmt(pdfMedian.quality,' %')],
+    [es?'Presión sistólica (experimental)':'Systolic pressure (experimental)',fmt(live.sbp,' mmHg'),fmt(pdfMedian.sbp,' mmHg')],
+    [es?'Presión diastólica (experimental)':'Diastolic pressure (experimental)',fmt(live.dbp,' mmHg'),fmt(pdfMedian.dbp,' mmHg')]
+  ];
+  // Draw the last retained waveform, not data collected by the next request.
+  const image=pdfWaveform&&pdfWaveform.length?waveformForPDF(pdfWaveform):null;
+  const rows=T.table([es?'Indicador':'Indicator',es?'En vivo':'Live',es?'Mediana (15 s)':'15-second median'],metrics);
+  const sections=[
+    {title:es?'Monitoreo en vivo y mediana':'Live monitoring and median',
+      description:(es?'Mediana completada: ':'Completed median: ')+pdfMedian.at.toLocaleString()+
+        ' · '+pdfMedian.count+' '+(es?'lecturas recibidas':'received readings'),
+      html:rows},
+    {title:es?'Señal rPPG procesada':'Processed rPPG Signal',
+      description:es?'Onda óptica normalizada, amplitud arbitraria; no equivale a presión arterial.':'Normalized optical waveform with arbitrary amplitude; not a blood-pressure measurement.',
+      image,imageAlt:'Processed rPPG waveform'},
+    {title:es?'Notas de interpretación':'Interpretation notes',
+      html:'<p>'+(es?'La concentración espectral no indica exactitud, confianza clínica ni saturación de oxígeno. La mediana suaviza valores extremos, pero no valida su precisión. Las presiones mostradas son inferencias experimentales únicamente cuando el modelo responde.':'Spectral concentration is not accuracy, clinical confidence or oxygen saturation. The median reduces outlier influence but does not establish accuracy. Blood-pressure values are experimental model inferences only when available.')+'</p>'}
+  ];
+  T.open({title:es?'Reporte cardiovascular':'Cardiovascular Monitoring Report',
+    subtitle:es?'YanqhayCare · Resumen de observación por cámara':'YanqhayCare · Camera-based observation summary',
+    sections,language:es?'es':'en'});
+}
+function waveformForPDF(data){
+  const c=document.createElement('canvas');c.width=960;c.height=240;
+  const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
+  g.strokeStyle='#d7e4e8';g.beginPath();g.moveTo(16,120);g.lineTo(944,120);g.stroke();
+  g.strokeStyle='#187e83';g.lineWidth=2;g.beginPath();
+  data.forEach((v,i)=>{const x=16+i/Math.max(1,data.length-1)*928;
+    const y=120-Math.max(-4,Math.min(4,v))*26;
+    if(i)g.lineTo(x,y);else g.moveTo(x,y);
+  });g.stroke();return c.toDataURL('image/png');
+}
+$('cardioPdf').addEventListener('click',cardioPdfReport);
 function draw(a){const c=$('wave'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);g.strokeStyle='#7fd3cb';g.lineWidth=2;g.beginPath();a.forEach((v,i)=>{const x=10+i/(a.length-1)*(w-20),y=h/2-v*22;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();}
 // Únicamente captura: 5 x 3 celdas de frente + 2 de cada pómulo.
 // Anclar la malla al ancho REAL de la cara, no al pequeño segmento entre cejas.
