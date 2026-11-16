@@ -64,26 +64,41 @@ def infer(data):
     sos = butter(3, [0.7,3.0], btype='bandpass', fs=fs, output='sos')
     pulse = sosfiltfilt(sos,pulse)
     pulse = (pulse - np.mean(pulse))/(np.std(pulse)+1e-9)
-    # A rapid preliminary estimate can arrive ~9 s after starting the camera.
-    # Longer high-quality windows are confirmed independently in hr_stability.
-    hr = estimate_hr(pulse, fs)
-    confirmed = hr.state == 'confirmed' and hr.bpm is not None
+    # Live mode follows the original continuous FFT approach. It deliberately
+    # exposes noisy frame-window estimates for comparison with 15-second medians;
+    # it is NOT a clinically verified heart-rate measurement.
+    live_mode = data.get('mode') == 'live'
+    if live_mode:
+        n = min(len(pulse), int(15 * fs))
+        y = pulse[-n:]
+        freq = np.fft.rfftfreq(n, 1 / fs)
+        power = np.abs(np.fft.rfft(y * np.hanning(n))) ** 2
+        valid = (freq >= 0.75) & (freq <= 3.0)
+        if not np.any(valid) or not np.isfinite(power).all():
+            raise ValueError('Invalid pulse spectrum')
+        idx = np.flatnonzero(valid)[int(np.argmax(power[valid]))]
+        peak_frac = float(power[max(0, idx - 1):idx + 2].sum() / (power[valid].sum() + 1e-12))
+        live_bpm = float(freq[idx] * 60)
+    else:
+        # Quality-controlled mode is available for research comparisons.
+        hr = estimate_hr(pulse, fs)
+    confirmed = not live_mode and hr.state == 'confirmed' and hr.bpm is not None
     caution = ('LOW FPS MODE (experimental): camera sampling is slow; reliability is unknown. ' if low_fps else '')
     result = {
         'status': 'experimental_low_fps' if low_fps else 'experimental',
-        'reason': caution + hr.reason + '. rPPG is not clinically validated.',
-        'bpm': round(hr.bpm, 1) if hr.bpm is not None else None,
-        'hr_state': hr.state,
-        'peak_fraction': round(hr.peak_fraction, 3),
-        'snr_db': round(hr.snr_db, 2) if math.isfinite(hr.snr_db) else None,
-        'agreement_bpm': round(hr.agreement_bpm, 1) if hr.agreement_bpm is not None else None,
+        'reason': caution + ('Live FFT estimate; readings can fluctuate.' if live_mode else hr.reason) + ' rPPG is not clinically validated.',
+        'bpm': round(live_bpm, 1) if live_mode else (round(hr.bpm, 1) if hr.bpm is not None else None),
+        'hr_state': 'live' if live_mode else hr.state,
+        'peak_fraction': round(peak_frac if live_mode else hr.peak_fraction, 3),
+        'snr_db': None if live_mode else (round(hr.snr_db, 2) if math.isfinite(hr.snr_db) else None),
+        'agreement_bpm': None if live_mode else (round(hr.agreement_bpm, 1) if hr.agreement_bpm is not None else None),
         'fps': round(fs_real, 1), 'seconds': round(elapsed, 1),
         'low_fps': low_fps, 'sbp': None, 'dbp': None, 'bp_status': MODEL_STATUS,
         'waveform': np.round(pulse[-min(len(pulse), 240):], 3).tolist(),
         'model_loaded': MODEL is not None,
     }
-    # Do not publish experimental BP during provisional/low-quality HR periods.
-    if confirmed and MODEL is not None:
+    # Research BP model may be sampled in live mode; clearly label it experimental.\n    # Non-live mode retains the quality confirmation guard.
+    if (confirmed or live_mode) and MODEL is not None:
         try:
             sbp,dbp=MODEL.predict_pulse(pulse[-int(7*fs):], fs)
             # Nunca etiquetar como lectura real o usar reglas clínicas.
