@@ -32,83 +32,94 @@ const status=s=>$('status').textContent=s;
 const i18n=(en,es)=>window.HEAMONi18n?.language==='es'?es:en;
 const calculating=()=>i18n('Calculating…','Calculando…');
 const unavailable=()=>i18n('Not available','No disponible');
-let tracker={accepted:null,history:[],pending:null};
-function resetTracker(){tracker={accepted:null,history:[],pending:null};}
+// Keep the last valid reading visible with an explicit status; never present stale data as fresh.
+let tracker={accepted:null,pending:null,history:[],provisional:[]};
+function resetTracker(){tracker={accepted:null,pending:null,history:[],provisional:[]};}
 function median(values){const a=[...values].sort((x,y)=>x-y),mid=Math.floor(a.length/2);return a.length%2?a[mid]:(a[mid-1]+a[mid])/2;}
-// Evita que un pico armónico aislado sustituya un pulso previamente coherente.
-// No recorta un cambio real: solicita confirmación si la discrepancia es grande.
-function trackBpm(candidate,quality,at){
+function trackBpm(candidate,quality,kind,at){
   const old=tracker.accepted;
-  if(!Number.isFinite(candidate)||!Number.isFinite(quality)||quality<0.22){
-    tracker.pending=null;
-    return {kind:'unreliable',value:old&&at-old.at<=8000?old.bpm:null};
+  if(!Number.isFinite(candidate)||!Number.isFinite(quality)||kind==='unavailable'){
+    if(old&&at-old.at<=10000)return {kind:'held',value:old.bpm};
+    return {kind:'unavailable',value:null};
   }
   const bpm=Number(candidate);
-  if(!old||at-old.at>12000){
-    tracker.history=[{bpm,at}];tracker.accepted={bpm,at};tracker.pending=null;
-    return {kind:'accepted',value:bpm};
+  if(kind==='provisional'){
+    // Provisional values are NEVER labeled as confirmed, even when visually smooth.
+    tracker.provisional=tracker.provisional.filter(v=>at-v.at<=7000);
+    tracker.provisional.push({bpm,at});tracker.provisional=tracker.provisional.slice(-3);
+    const preview=median(tracker.provisional.map(v=>v.bpm));
+    if(old&&at-old.at<=8000&&Math.abs(preview-old.bpm)>18)return {kind:'held',value:old.bpm};
+    return {kind:'provisional',value:old&&at-old.at<=6000?old.bpm:preview};
   }
-  const jump=Math.abs(bpm-old.bpm),limit=Math.max(18,0.18*old.bpm);
-  if(jump>limit){
-    const pending=tracker.pending;
-    if(pending&&at-pending.at<8500&&Math.abs(pending.bpm-bpm)<=12){
-      // Un segundo candidato compatible permite cambios cardíacos reales.
-      tracker.history=[{bpm:pending.bpm,at:pending.at},{bpm,at}];
-      tracker.accepted={bpm:median(tracker.history.map(v=>v.bpm)),at};
-      tracker.pending=null;
-      return {kind:'accepted',value:tracker.accepted.bpm};
+  // Confirmed spectral result. Significant steps need a second consistent candidate.
+  if(old&&at-old.at<=12000&&Math.abs(bpm-old.bpm)>Math.max(18,old.bpm*.18)){
+    if(!tracker.pending||at-tracker.pending.at>8000||Math.abs(tracker.pending.bpm-bpm)>12){
+      tracker.pending={bpm,at};
+      return {kind:'verifying',value:at-old.at<=10000?old.bpm:null};
     }
-    tracker.pending={bpm,at};
-    return {kind:'verifying',value:at-old.at<=8000?old.bpm:null};
   }
   tracker.pending=null;
-  tracker.history=tracker.history.filter(v=>at-v.at<=11000);
+  tracker.history=tracker.history.filter(v=>at-v.at<=10000);
   tracker.history.push({bpm,at});tracker.history=tracker.history.slice(-5);
   const stable=median(tracker.history.map(v=>v.bpm));
   tracker.accepted={bpm:stable,at};
-  return {kind:'accepted',value:stable};
+  return {kind:'confirmed',value:stable};
 }
-function setInitialReadings(){resetTracker();$('bpm').textContent=calculating();$('quality').textContent='—';$('sbp').textContent=calculating();$('dbp').textContent=calculating();}
+function setInitialReadings(){
+  resetTracker();
+  $('bpm').textContent=i18n('Collecting…','Recolectando…');
+  $('quality').textContent='—';
+  $('sbp').textContent=unavailable();$('dbp').textContent=unavailable();
+}
 document.addEventListener('heamon-language-changed',()=>{
   if(!on)return;
-  if($('bpm').dataset.pending==='true')$('bpm').textContent=calculating();
-  if($('sbp').dataset.pending==='true')$('sbp').textContent=calculating();
-  if($('dbp').dataset.pending==='true')$('dbp').textContent=calculating();
+  if($('bpm').dataset.pending==='true')$('bpm').textContent=i18n('Collecting…','Recolectando…');
+  if($('sbp').dataset.pending==='true')$('sbp').textContent=unavailable();
+  if($('dbp').dataset.pending==='true')$('dbp').textContent=unavailable();
 });
 
 async function setup(){const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');model=await FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'CPU'},runningMode:'VIDEO',numFaces:1});}
 $('start').onclick=async()=>{const g=++generation;$('start').disabled=true;status(i18n('Loading face detection and requesting camera access…','Cargando detección facial y solicitando acceso a cámara…'));try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];previousFace=null;lastSample=0;lastPost=0;setInitialReadings();$('stop').disabled=false;status(i18n('Detecting forehead and cheeks; collecting signal…','Detectando frente y pómulos; reuniendo señal…'));requestAnimationFrame(loop);}catch(e){status(i18n('Unable to start: ','No se pudo iniciar: ')+e.message);$('start').disabled=false;}};
 $('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];previousFace=null;resetTracker();ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status(i18n('Capture stopped.','Captura detenida.'));};
 async function send(){
-  if(busy||samples.length<90)return;
+  if(busy||samples.length<60)return;
   busy=true;
+  const requestGeneration=generation;
   try{
-    const windowSamples=samples.slice(-450);
+    // IMPORTANT: 450 samples at 30 FPS were only 15 seconds and could never
+    // satisfy the backend's former 18-second confirmation requirement.
+    const windowSamples=samples.slice(-800);
     const resp=await fetch('/api/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timestamps:windowSamples.map(x=>x.t),rgb:windowSamples.map(x=>x.rgb)})});
-    if(!resp.ok)throw new Error(`HTTP ${resp.status}`);
-    const r=await resp.json();if(!on)return;
-    const tracked=trackBpm(r.bpm,r.peak_fraction,performance.now());
-    const fresh=tracked.kind==='accepted';
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    const r=await resp.json();
+    if(!on||requestGeneration!==generation)return;
+    const rawState=r.hr_state||'unavailable';
+    const tracked=trackBpm(r.bpm,r.peak_fraction,rawState,performance.now());
+    const fresh=tracked.kind==='confirmed';
     $('bpm').dataset.pending=String(tracked.value==null);
-    $('bpm').textContent=tracked.value==null?calculating():tracked.value.toFixed(0)+(fresh?'':' ·');
+    $('bpm').textContent=tracked.value==null
+      ?i18n('Signal unavailable','Señal no disponible')
+      :tracked.value.toFixed(0)+(fresh?'':tracked.kind==='provisional'?' ~':' ·');
     $('quality').textContent=r.peak_fraction==null?'—':(100*r.peak_fraction).toFixed(0)+' %';
-    // Solo publicar presión inferida de señal aceptada en esta respuesta; nunca
-    // vincularla a un BPM que ha sido retenido por el filtro de presentación.
+    // Never associate inferred blood pressure with retained or provisional BPM.
     const bpFresh=fresh&&r.sbp!=null&&r.dbp!=null;
     $('sbp').dataset.pending=String(!bpFresh);
     $('dbp').dataset.pending=String(!bpFresh);
-    $('sbp').textContent=bpFresh?r.sbp.toFixed(0)+'*':calculating();
-    $('dbp').textContent=bpFresh?r.dbp.toFixed(0)+'*':calculating();
-    const state=tracked.kind==='verifying'
-      ?i18n('Verifying sudden BPM change; previous value shown briefly (·).','Verificando un salto de BPM; se muestra brevemente el valor anterior (·).')
-      :tracked.kind==='unreliable'
-        ?i18n('Pulse signal weak or ambiguous; calculating again.','Señal pulsátil débil o ambigua; recalculando.')
-        :i18n('Experimental rPPG signal; not a clinical measurement.','Señal rPPG experimental; no es una medición clínica.');
-    $('reason').textContent=state+(bpFresh?' · '+i18n('BP estimate is experimental.','Estimación de presión experimental.'):'');
+    $('sbp').textContent=bpFresh?r.sbp.toFixed(0)+'*':unavailable();
+    $('dbp').textContent=bpFresh?r.dbp.toFixed(0)+'*':unavailable();
+    const state=tracked.kind==='confirmed'
+      ?i18n('Quality-confirmed experimental BPM.','BPM experimental confirmado por calidad.')
+      :tracked.kind==='provisional'
+        ?i18n('Early provisional BPM (~); awaiting stronger signal.','BPM provisional temprano (~); esperando mejor señal.')
+        :tracked.kind==='held'||tracked.kind==='verifying'
+          ?i18n('Showing previous BPM (·); current signal is not confirmed.','Mostrando BPM anterior (·); señal actual sin confirmar.')
+          :i18n('Low-quality signal: no reliable BPM available.','Señal de baja calidad: BPM no disponible.');
+    $('reason').textContent=state+' '+i18n('Not a clinical measurement.','No es una medición clínica.');
     $('fps').textContent=r.fps?i18n('Effective sampling: ','Muestreo efectivo: ')+r.fps+' fps':'';
     if(r.waveform)draw(r.waveform);
-  }catch(e){if(on){$('reason').textContent=i18n('Unable to contact Python server: ','Error al contactar servidor Python: ')+e.message;}}
-  finally{busy=false;}
+  }catch(e){
+    if(on&&requestGeneration===generation)$('reason').textContent=i18n('Unable to contact Python server: ','Error al contactar servidor Python: ')+e.message;
+  }finally{busy=false;}
 }
 function draw(a){const c=$('wave'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);g.strokeStyle='#7fd3cb';g.lineWidth=2;g.beginPath();a.forEach((v,i)=>{const x=10+i/(a.length-1)*(w-20),y=h/2-v*22;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();}
 // Únicamente captura: 5 x 3 celdas de frente + 2 de cada pómulo.
@@ -224,10 +235,10 @@ function loop(now){
   samples.push({t:now/1000,rgb});
   while(samples.length&&samples[0].t<now/1000-24)samples.shift();
   const duration=samples.at(-1).t-samples[0].t;
-  $('progress').style.width=Math.min(duration/18*100,100)+'%';
+  $('progress').style.width=Math.min(duration/9*100,100)+'%';
   const frontal=values.slice(0,15).filter(Boolean).length,cheeks=values.slice(15).filter(Boolean).length;
-  status(i18n('Automatic capture: ','Captura automática: ')+duration.toFixed(1)+i18n(' s of signal. Forehead ',' s de señal. Frente ')+frontal+'/15 · '+i18n('cheeks ','pómulos ')+cheeks+'/4 ('+valid+'/19). '+(duration<18?i18n('Keep still.','Mantente quieto.'):i18n('Analyzing pulse quality…','Analizando calidad del pulso…')));
-  if(duration>=18&&samples.length>=90&&now-lastPost>2500){lastPost=now;send();}
+  status(i18n('Automatic capture: ','Captura automática: ')+duration.toFixed(1)+i18n(' s of signal. Forehead ',' s de señal. Frente ')+frontal+'/15 · '+i18n('cheeks ','pómulos ')+cheeks+'/4 ('+valid+'/19). '+(duration<9?i18n('Keep still.','Mantente quieto.'):i18n('Analyzing pulse quality…','Analizando calidad del pulso…')));
+  if(duration>=9&&samples.length>=60&&now-lastPost>2000){lastPost=now;send();}
 }
 window.addEventListener('message', e => { if(e.origin!==location.origin || e.source!==parent) return; if(e.data?.type==='HEAMON_START'&&!on) $('start').click(); if(e.data?.type==='HEAMON_STOP'&&on) $('stop').click(); });
 </script></body></html>
