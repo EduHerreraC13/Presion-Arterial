@@ -186,7 +186,7 @@
  const originalText = new WeakMap();
  const originalAttr = new WeakMap();
  const SKIP = new Set(['SCRIPT','STYLE','TEXTAREA','CODE','PRE','NOSCRIPT']);
- let lang = localStorage.getItem('anthropometry_language') === 'es' ? 'es' : 'en';
+ let lang = (localStorage.getItem('heamon-language') || localStorage.getItem('anthropometry_language')) === 'es' ? 'es' : 'en';
  let busy = false;
  const exact = x => translations[x] || x;
  function translate(x) {
@@ -252,8 +252,9 @@
    const warning=lang==='en'?'Research prototype only. Height and distance are estimates, not clinically validated measurements. MediaPipe requires internet access for its first model download.':'Solo prototipo de investigación. La estatura y la distancia son estimaciones, no mediciones validadas clínicamente. MediaPipe necesita internet para descargar el modelo inicialmente.';
    if(note.textContent!==warning)note.textContent=warning;
  };
- document.getElementById('anthro-lang-en').addEventListener('click',()=>{lang='en';localStorage.setItem('anthropometry_language',lang);update();langStatic();});
+ document.getElementById('anthro-lang-en').addEventListener('click',()=>{lang='en';localStorage.setItem('anthropometry_language',lang);localStorage.setItem('heamon-language',lang); if(window.parent!==window) parent.postMessage({type:'HEAMON_CHILD_LANGUAGE',language:lang},location.origin);update();langStatic();});
  document.getElementById('anthro-lang-es').addEventListener('click',()=>{lang='es';localStorage.setItem('anthropometry_language',lang);update();langStatic();});
+ window.addEventListener('message',e=>{if(e.origin!==location.origin || e.source!==window.parent) return;if(e.data?.type==='HEAMON_LANGUAGE' && ['en','es'].includes(e.data.language)){lang=e.data.language;localStorage.setItem('anthropometry_language',lang);update();langStatic();}});
  // DOM updates from the original detection engine may generate new text: re-translate it.
  const mo=new MutationObserver(()=>{if(!busy){update();langStatic();}});
  mo.observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['title','placeholder','aria-label']});
