@@ -52,3 +52,13 @@ def test_reports_support_language_selection():
     assert "window.HEAMONi18n?.language==='es'" in cardio
     assert "Export Results" in translations
     assert "Download PDF Report" in translations
+
+
+def test_respiration_category_mapper_is_initialized_before_use():
+    """Avoid ReferenceError when the first PDF is requested after 30 s."""
+    html = _read("fatiga_respiracion.html")
+    start = html.index("function exportRespAssessment()")
+    end = html.index("/* ------------------------------ ventana de 30 s", start)
+    exporter = html[start:end]
+    assert exporter.index("const category=") < exporter.index("const signs=[")
+    assert "category(res.dx.level?.name" in exporter
