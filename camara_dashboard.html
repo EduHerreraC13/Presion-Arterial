@@ -103,7 +103,7 @@ function setInitialReadings(){
 }
 async function setup(){const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');model=await FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'CPU'},runningMode:'VIDEO',numFaces:1});}
 $('start').onclick=async()=>{const g=++generation;$('start').disabled=true;status(i18n('Loading face detection and requesting camera access…','Cargando detección facial y solicitando acceso a cámara…'));try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];previousFace=null;lastSample=0;lastPost=0;setInitialReadings();$('stop').disabled=false;status(i18n('Detecting forehead and cheeks; collecting signal…','Detectando frente y pómulos; reuniendo señal…'));requestAnimationFrame(loop);}catch(e){status(i18n('Unable to start: ','No se pudo iniciar: ')+e.message);$('start').disabled=false;}};
-$('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];previousFace=null;resetTracker();ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status(i18n('Capture stopped.','Captura detenida.'));};
+$('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];previousFace=null;medianBatch=[];medianStarted=0;ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status(i18n('Capture stopped.','Captura detenida.'));};
 async function send(){
   if(busy||samples.length<60)return;
   busy=true;const requestGeneration=generation;
@@ -227,7 +227,7 @@ function loop(now){
   let face=null;
   try{face=model.detectForVideo(video,now).faceLandmarks[0];}catch(e){status('Error del detector: '+e.message);return;}
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!face){samples=[];previousFace=null;$('progress').style.width='0%';setInitialReadings();status(i18n('No face detected: face the camera.','Rostro no detectado: mira la cámara de frente.'));return;}
+  if(!face){samples=[];previousFace=null;$('progress').style.width='0%';$('reason').textContent=i18n('Face not visible; waiting for signal.','Rostro no visible; esperando señal.');status(i18n('No face detected: face the camera.','Rostro no detectado: mira la cámara de frente.'));return;}
   sc.drawImage(video,0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT);
   const pixels=sc.getImageData(0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT).data;
   // Smooth facial landmarks, not RGB pulse values: reduce ROI edge jitter without flattening the pulse.
@@ -239,7 +239,7 @@ function loop(now){
   const rgb=combineRegions(regions,values);
   const valid=values.filter(Boolean).length;
   if(!rgb||valid<4){
-    samples=[];$('progress').style.width='0%';setInitialReadings();
+    samples=[];$('progress').style.width='0%';$('reason').textContent=i18n('Face coverage insufficient; waiting for signal.','Cobertura facial insuficiente; esperando señal.');
     status(i18n('Insufficient facial coverage; improve lighting and uncover your forehead.','Cobertura facial insuficiente; mejora la luz y despeja la frente.'));return;
   }
   samples.push({t:now/1000,rgb});
