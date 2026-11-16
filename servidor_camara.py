@@ -219,7 +219,7 @@ def main():
         except Exception as e:
             FATIGUE_STATUS='No se pudo cargar FatigueSense: '+str(e)
             print('ADVERTENCIA:',FATIGUE_STATUS)
-    print(f'HEAMON listening on {args.host}:{args.port}; locally open http://127.0.0.1:{args.port}/index.html')
+    print(f'YanqhayCare listening on {args.host}:{args.port}; locally open http://127.0.0.1:{args.port}/index.html')
     print('PA: se transmiten RGB/tiempos. FatigueSense opcional: JPEG local de fotogramas reducidos.')
     ThreadingHTTPServer((args.host,args.port),Handler).serve_forever()
 
