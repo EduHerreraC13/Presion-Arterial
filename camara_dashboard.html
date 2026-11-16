@@ -21,8 +21,6 @@
 </style></head><body><main>
 <div class="top"><div><h1>Monitoreo cardiovascular</h1><p style="margin:5px 0">rPPG experimental · Dashboard conectado a cámara · Sin entradas manuales</p></div><span class="tag">Investigación · No es un dispositivo médico</span></div>
 <div class="layout"><section class="card"><h2>Captura en vivo</h2><div class="cam"><video id="video" autoplay playsinline muted></video><canvas id="overlay"></canvas></div><div class="buttons"><button id="start">Activar cámara</button><button id="stop" class="secondary" disabled>Detener</button></div><div class="bar"><i id="progress"></i></div><p id="status" role="status" aria-live="polite">Cámara desactivada. Colócate frente a ella con iluminación estable y minimiza el movimiento.</p><small>Para rPPG se envía al servidor un promedio RGB combinado de regiones de frente y pómulos, junto con sus tiempos; no se transmiten fotogramas en este módulo. Necesita internet inicialmente para descargar MediaPipe.</small></section>
-</div>
-<div class="monitor-grid">
 <section class="card monitor-live">
 <h2>Monitoreo en tiempo real</h2>
 <p class="monitor-help">Lecturas experimentales de la cámara, actualizadas aproximadamente cada 2 segundos tras reunir señal suficiente. Pueden fluctuar.</p>
@@ -33,8 +31,8 @@
 <div class="metric"><b id="dbp">—</b><span>Presión diastólica (mmHg) · experimental</span></div>
 </div>
 <p id="reason" class="monitor-meta">Inicia la cámara para comenzar.</p><p class="mut" id="fps"></p>
-</section>
-<section class="card monitor-median">
+</section></div>
+<section class="card full monitor-median">
 <h2>Monitoreo estimado · mediana cada 15 segundos</h2>
 <p class="monitor-help">Se calcula la mediana de las lecturas válidas recibidas durante cada intervalo de 15 segundos. No es una medición independiente ni garantiza mayor exactitud.</p>
 <div class="metrics">
@@ -45,7 +43,6 @@
 </div>
 <p class="monitor-meta" id="medianStatus">Primer resumen después de 15 segundos de lecturas.</p>
 </section>
-</div>
 <section class="card full"><h2>Señal rPPG procesada</h2><canvas id="wave" width="960" height="150"></canvas><small>Amplitud normalizada arbitraria; no representa presión en mmHg. Se actualiza automáticamente después de obtener una ventana válida.</small></section>
 <section class="card full"><h2>Alcance y limitaciones</h2><p>La cámara permite extraer variaciones ópticas relacionadas con pulso, pero no constituye un tensiómetro. La predicción de presión arterial solo se habilita con un checkpoint compatible, previamente entrenado. Incluso entonces se mostrará como <b>inferencia experimental no calibrada ni validada</b>, no como medición ni aptitud clínica.</p><p>Los indicadores MAE, ME, desviación, correlación y cumplimiento de normas pertenecen a la evaluación de un modelo contra presiones de referencia, y <b>no pueden calcularse desde una webcam sin etiquetas reales</b>. El dashboard original del repositorio se conserva para consultar esos experimentos.</p></section>
 </main>
