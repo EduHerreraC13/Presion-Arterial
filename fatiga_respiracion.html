@@ -44,12 +44,14 @@ h1{font-size:clamp(1.55rem,2.5vw,2.25rem);margin:0;font-weight:750;letter-spacin
 <section id="hdx-panel" aria-live="polite"></section>
 <section class="chartbox"><div class="card-head"><h2 style="margin:0">Evolución de señales</h2><span class="micro">Últimos 60 segundos</span></div><canvas id="chart" width="1100" height="200"></canvas><div class="legend"><span><i></i>EAR ocular</span><span class="thr"><i></i>Umbral de cierre</span><span class="resp"><i></i>Señal respiratoria experimental</span></div></section>
 <div class="section-head"><div><h2 style="margin:0">Comparación e historial</h2><p>Conserva la tabla detallada y los análisis de esta sesión.</p></div></div>
+<section class="panel" style="margin-top:14px"><h2>Exportar evaluación</h2><p class="micro">El PDF incluirá los signos principales de la última evaluación completa, la gráfica de evolución de señales capturada al finalizar, la comparación con el análisis anterior y el historial disponible. El botón se habilita después de “Iniciar análisis · 30 s”.</p><button id="respPdf" type="button" disabled>Descargar reporte PDF</button><p id="respPdfStatus" class="micro">Completa una evaluación de 30 segundos para exportar.</p></section>
 <section class="report" id="compare"><h2>Comparación con el análisis anterior</h2><p class="empty">Todavía no hay análisis completados. Activa la cámara e inicia un análisis.</p></section>
 <details class="technical"><summary>Ver historial de análisis</summary><div class="inner"><section class="report" id="history"><h2>Historial de esta sesión</h2><p class="empty">Sin análisis todavía.</p></section></div></details>
 <details class="technical"><summary>Ver métricas avanzadas y diagnóstico técnico</summary><div class="inner"><div class="tech-metrics"><div class="card"><span class="label">Respiraciones · último minuto</span><strong class="value" id="cRespMin">—</strong><span class="detail">Conteo de últimos 60 s</span></div><div class="card"><span class="label">Respiraciones · sesión</span><strong class="value" id="cRespTot">0</strong><span class="detail">Acumulado</span></div><div class="card"><span class="label">Respiraciones · ventana</span><strong class="value" id="cRespWin">—</strong><span class="detail" id="cRespWinD">Ventana 30 s</span></div></div><div class="technical-grid" style="margin-top:12px"><div class="panel"><h2>Señales faciales</h2><ul class="stats"><li>EAR actual <strong id="sEar">—</strong></li><li>Umbral de cierre <strong id="sThr">—</strong></li><li>Inclinación (roll) <strong id="sRoll">—</strong></li></ul></div><div class="panel"><h2>Respiraciones por cada minuto</h2><ul class="mins" id="perMin"><li>Sin datos todavía</li></ul></div></div></div></details>
 <p class="notice-help">YanqhayCare · Prototipo de investigación. Los umbrales son experimentales y las señales por cámara pueden variar con luz, movimiento, ropa y encuadre. No usar para decisiones médicas u operativas críticas.</p>
 </main>
 <script src="heamon_i18n.js"></script>
+<script src="yanqhaycare_pdf.js"></script>
 <script>
 /* =====================================================================
  * YanqhayCare · módulo de respiración + base ideal + estimación heurística
@@ -679,6 +681,60 @@ function processNoFace(t) {
   checkWindow(t);
 }
 
+let lastPdfAssessment=null;
+function exportRespAssessment(){
+  if(!lastPdfAssessment)return;
+  const {res,prev,trendImage}=lastPdfAssessment;
+  const es=window.HEAMONi18n?.language==='es';
+  const T=window.YanqhayPDF;if(!T)return;
+  const fmt=(v,d=1,unit='')=>Number.isFinite(v)?v.toFixed(d)+unit:'—';
+  const signs=[
+    [es?'Pestañeos (ventana)':'Blinks (window)',fmt(res.m.blinks,0)],
+    [es?'Frecuencia de pestañeo':'Blink rate',fmt(res.m.blinkRate,1,' /min')],
+    ['PERCLOS',fmt(res.m.perclos,1,' %')],
+    [es?'Cierre ocular medio (AECD)':'Average eye-closure duration (AECD)',fmt(res.m.aecd,0,' ms')],
+    [es?'EAR medio':'Mean EAR',fmt(res.m.ear,3)],
+    [es?'Respiraciones (ventana)':'Breaths (window)',fmt(res.resp.breaths,0)],
+    [es?'Respiraciones/min (si confiable)':'Breathing/min (when reliable)',
+      res.resp.reliable?fmt(res.resp.ratePerMin,1):'—'],
+    [es?'Cobertura facial':'Face coverage',fmt(res.m.coverage*100,0,' %')],
+    [es?'Índice experimental':'Experimental index',fmt(res.dx.score,0,' /100')],
+    [es?'Nivel de evaluación':'Assessment category',
+      res.dx.conclusivo?(res.dx.level?.name||'—'):(es?'No concluyente':'Inconclusive')]
+  ];
+  const comparison=ROWS.map(row=>{
+    const cur=row.get(res),old=prev?row.get(prev):null;
+    const delta=Number.isFinite(cur)&&Number.isFinite(old)
+      ?fmt(cur-old,row.dec):'—';
+    return [row.label,row.unit,fmt(cur,row.dec),fmt(old,row.dec),delta];
+  });
+  // Use actual completed records, not live-updated cards.
+  const history=S.results.map(r=>[
+    '#'+r.idx,r.when.toLocaleString(es?'es-PE':'en-US'),
+    fmt(r.dx.score,0),r.dx.conclusivo?(r.dx.level?.name||'—'):'Inconclusive',
+    fmt(r.m.perclos),fmt(r.m.blinkRate),fmt(r.resp.breaths,0),
+    r.resp.reliable?fmt(r.resp.ratePerMin):'—'
+  ]);
+  const sections=[
+    {title:(es?'Signos principales · evaluación #':'Primary Signs · assessment #')+res.idx,
+      html:T.table([es?'Indicador':'Indicator',es?'Resultado':'Result'],signs)},
+    {title:es?'Tendencias de señal':'Signal Trends',
+      description:es?'Gráfica EAR y respiración capturada al completar esta evaluación.':'EAR and breathing plot captured at assessment completion.',
+      image:trendImage,imageAlt:'Eye EAR and breathing signal trends'},
+    {title:es?'Comparación con histórico':'Comparison with Previous Assessment',
+      description:prev?(es?'Comparación con la evaluación anterior #':'Compared with previous assessment #')+prev.idx:
+        (es?'Primera evaluación de la sesión; no existe análisis previo.':'First session assessment; no prior analysis available.'),
+      html:T.table([es?'Métrica':'Metric',es?'Unidad':'Unit',es?'Actual':'Current',es?'Anterior':'Previous',es?'Cambio':'Delta'],comparison)},
+    {title:es?'Historial de evaluaciones':'Session Assessment History',
+      html:T.table([es?'Número':'Number',es?'Fecha / hora':'Timestamp',es?'Índice':'Index',es?'Nivel':'Level','PERCLOS','Blink/min',
+        es?'Respiraciones':'Breaths','Breaths/min'],history)}
+  ];
+  T.open({title:es?'Reporte de fatiga y respiración':'Visual Fatigue and Breathing Report',
+    subtitle:(es?'Evaluación completada #':'Completed assessment #')+res.idx+' · 30 s',
+    sections,at:res.when,language:es?'es':'en'});
+}
+$('respPdf').addEventListener('click',exportRespAssessment);
+
 /* ------------------------------ ventana de 30 s ------------------------------ */
 function startWindow(t) {
   S.win = new Acc(); S.winActive = true; S.winStart = t; S.winEnd = t + WIN_MS;
@@ -709,6 +765,13 @@ function finalizeWindow() {
   renderCompare(res, prev);
   S.results.push(res); S.prev = res;
   renderHistory();
+  // Capture the finalized assessment's signal trends *at completion*, rather
+  // than exporting a graph from a later monitoring moment.
+  drawChart(S.winEnd);
+  const trendImage=$('chart').toDataURL('image/png');
+  lastPdfAssessment={res,prev,trendImage};
+  $('respPdf').disabled=false;
+  $('respPdfStatus').textContent='Evaluación #'+res.idx+' completa; reporte disponible.';
   const e = S.winEnd;
   $('btnCancel').disabled = true;
   if ($('chain').checked && S.running) { startWindow(e); setStatus('Análisis #' + res.idx + ' completado. Monitor activo; nuevo análisis de 30 s en curso.'); }
@@ -906,6 +969,9 @@ async function startMonitor() {
 
 function resetSession() {
   S = freshState(); Dx.resp.reset(); gRef = null; gPool = null; refOffset = 0; lastPerMin = '';
+  lastPdfAssessment=null;
+  $('respPdf').disabled=true;
+  $('respPdfStatus').textContent='Completa una evaluación de 30 segundos para exportar.';
   $('hdx-panel').innerHTML = '';
   $('compare').innerHTML = '<h2>Comparación con el análisis anterior</h2><p class="empty">Aún no hay análisis completados. Con el monitor activo, pulsa “Iniciar análisis (30 s)”.</p>';
   $('history').innerHTML = '<h2>Historial de esta sesión</h2><p class="empty">Sin análisis todavía.</p>';
