@@ -265,6 +265,34 @@ The camera can produce useful geometric estimates when the reference marker is k
 
 ---
 
+## Export session reports as PDF
+
+YanqhayCare supports **browser-generated PDF reports** for the cardiovascular and visual fatigue/breathing modules. Reports are assembled from the actual measurements shown in the session; they are not synthetic examples.
+
+### Cardiovascular report
+
+1. Open **Cardiovascular** and start the camera.
+2. Wait for the first completed **15-second Median** interval that contains a numeric heart-rate estimate.
+3. The **Download PDF Report** button becomes enabled beneath the processed rPPG waveform.
+4. Select the button. A print-ready report opens with the **latest live measurements**, the **most recently completed medians** for BPM, spectral peak concentration, and available experimental SBP/DBP, plus an image of the **Processed rPPG Signal**.
+5. Select **Save as PDF / Print**, then choose **Save as PDF** as the browser printer/destination. Choose your filename and save location.
+
+The button remains disabled if no usable median BPM has yet been calculated. A missing blood-pressure model does **not** block reports: unavailable pressure values display as dashes. Median values are fixed at the completion of the interval; the live readings and waveform are captured when the report is opened.
+
+### Visual fatigue and breathing report
+
+1. Open **Visual Fatigue & Breathing** and start the camera.
+2. Click **Start Analysis · 30 s** and allow the assessment window to complete.
+3. After the **primary signs**, **Signal Trends**, and **previous-assessment comparison** have been rendered, **Download PDF Report** becomes available.
+4. Export a report containing the **completed assessment's primary indicators** (blink and respiratory measures, eye closure, coverage, experimental index), a snapshot of the **Signal Trends chart taken at completion**, a comparison with the preceding assessment, and **all completed assessments in the current session history**.
+5. In the print-ready window, select **Save as PDF / Print** and choose the browser's **Save as PDF** destination.
+
+The first assessment has no preceding assessment; the report states this explicitly instead of inventing a comparison. Metrics that cannot be reliably estimated are shown as unavailable. Starting a new camera session resets the report availability and session history.
+
+**Privacy and workflow:** report preparation runs in the browser with no PDF upload service. The browser's print dialog controls where the report is saved; downloading is not fully automatic. If the new report window does not open, allow pop-ups for YanqhayCare. Camera-derived measurements remain experimental and are not a clinical diagnosis.
+
+---
+
 ## Technology and architecture
 
 YanqhayCare is built as a browser-based experience with a Python backend for selected signal-processing and model-inference tasks:
