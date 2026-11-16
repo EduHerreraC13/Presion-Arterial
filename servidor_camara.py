@@ -32,13 +32,13 @@ PUBLIC_ASSETS = frozenset({
 def infer(data):
     ts = np.asarray(data.get('timestamps', []), float)
     rgb = np.asarray(data.get('rgb', []), float)
-    if ts.ndim != 1 or rgb.ndim != 2 or rgb.shape[1:] != (3,) or len(ts) != len(rgb) or len(ts) < 90 or len(ts) > 1500:
-        raise ValueError('Se necesitan entre 90 y 1500 muestras RGB con marcas temporales')
+    if ts.ndim != 1 or rgb.ndim != 2 or rgb.shape[1:] != (3,) or len(ts) != len(rgb) or len(ts) < 60 or len(ts) > 1500:
+        raise ValueError('Se necesitan entre 60 y 1500 muestras RGB con marcas temporales')
     if not np.isfinite(ts).all() or not np.isfinite(rgb).all() or np.any(np.diff(ts) <= 0):
         raise ValueError('Tiempos y señales deben ser finitos y ordenados')
     elapsed = float(ts[-1] - ts[0])
-    if elapsed < 7 or elapsed > 100:
-        raise ValueError('Ventana temporal fuera de 7–100 segundos')
+    if elapsed < 8.5 or elapsed > 100:
+        raise ValueError('Ventana temporal fuera de 8.5–100 segundos')
     fs_real = (len(ts)-1)/elapsed
     minimum_fps = 7.0 if LOW_FPS_MODE else 12.0
     if fs_real < minimum_fps or fs_real > 90:
@@ -48,8 +48,8 @@ def infer(data):
     if np.max(intervals) > max(0.5, 4.0 * float(np.median(intervals))):
         return {'status': 'no_evaluable', 'reason': 'Captura interrumpida o irregular: hay saltos temporales grandes', 'bpm': None, 'sbp': None, 'dbp': None, 'fps': round(fs_real,1)}
     low_fps = fs_real < 12
-    if low_fps and elapsed < 12:
-        return {'status': 'no_evaluable', 'reason': 'Modo FPS bajo: se requieren al menos 12 segundos de señal', 'bpm': None, 'sbp': None, 'dbp': None, 'fps': round(fs_real,1)}
+    if low_fps and elapsed < 8.5:
+        return {'status': 'no_evaluable', 'reason': 'Modo FPS bajo: se requieren al menos 8.5 segundos de señal', 'bpm': None, 'sbp': None, 'dbp': None, 'fps': round(fs_real,1)}
     fs = float(FS_MODEL)
     tgrid = np.arange(ts[0], ts[-1], 1/fs)
     # CHROM utiliza combinaciones de canales normalizados para reducir artefactos comunes.
@@ -64,24 +64,26 @@ def infer(data):
     sos = butter(3, [0.7,3.0], btype='bandpass', fs=fs, output='sos')
     pulse = sosfiltfilt(sos,pulse)
     pulse = (pulse - np.mean(pulse))/(np.std(pulse)+1e-9)
-    # VitaSense-inspired approach: interpolated spectral peak and temporal agreement.
-    # Requiring 18 s reduces harmonic switches but increases warm-up latency.
+    # A rapid preliminary estimate can arrive ~9 s after starting the camera.
+    # Longer high-quality windows are confirmed independently in hr_stability.
     hr = estimate_hr(pulse, fs)
-    peak_frac = hr.peak_fraction
-    if hr.bpm is None:
-        return {'status':'no_evaluable', 'reason':hr.reason, 'bpm':None,
-                'sbp':None, 'dbp':None, 'peak_fraction':round(peak_frac,3),
-                'snr_db':round(hr.snr_db,2) if math.isfinite(hr.snr_db) else None,
-                'agreement_bpm':round(hr.agreement_bpm,1) if hr.agreement_bpm is not None else None,
-                'fps':round(fs_real,1)}
-    bpm = hr.bpm
-    caution = ('LOW FPS MODE (experimental): ~8 FPS; BP inference is NOT validated and can be unreliable. ' if low_fps else '')
-    result={'status':'experimental_low_fps' if low_fps else 'experimental','reason':caution+'Estimación rPPG no validada; no utilizar clínicamente',
-        'bpm':round(bpm,1),'peak_fraction':round(peak_frac,3),'fps':round(fs_real,1),
-        'seconds':round(elapsed,1),'snr_db':round(hr.snr_db,2),
-        'agreement_bpm':round(hr.agreement_bpm,1), 'low_fps':low_fps,'sbp':None,'dbp':None,'bp_status':MODEL_STATUS,
-        'waveform':np.round(pulse[-min(len(pulse),240):],3).tolist(), 'model_loaded':MODEL is not None}
-    if MODEL is not None:
+    confirmed = hr.state == 'confirmed' and hr.bpm is not None
+    caution = ('LOW FPS MODE (experimental): camera sampling is slow; reliability is unknown. ' if low_fps else '')
+    result = {
+        'status': 'experimental_low_fps' if low_fps else 'experimental',
+        'reason': caution + hr.reason + '. rPPG is not clinically validated.',
+        'bpm': round(hr.bpm, 1) if hr.bpm is not None else None,
+        'hr_state': hr.state,
+        'peak_fraction': round(hr.peak_fraction, 3),
+        'snr_db': round(hr.snr_db, 2) if math.isfinite(hr.snr_db) else None,
+        'agreement_bpm': round(hr.agreement_bpm, 1) if hr.agreement_bpm is not None else None,
+        'fps': round(fs_real, 1), 'seconds': round(elapsed, 1),
+        'low_fps': low_fps, 'sbp': None, 'dbp': None, 'bp_status': MODEL_STATUS,
+        'waveform': np.round(pulse[-min(len(pulse), 240):], 3).tolist(),
+        'model_loaded': MODEL is not None,
+    }
+    # Do not publish experimental BP during provisional/low-quality HR periods.
+    if confirmed and MODEL is not None:
         try:
             sbp,dbp=MODEL.predict_pulse(pulse[-int(7*fs):], fs)
             # Nunca etiquetar como lectura real o usar reglas clínicas.
