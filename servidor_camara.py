@@ -14,6 +14,7 @@ import numpy as np
 from scipy.signal import butter, sosfiltfilt
 from presion_arterial.config import FS_MODEL
 from presion_arterial.degrade import resample_to
+from presion_arterial.hr_stability import estimate_hr
 
 ROOT = Path(__file__).resolve().parent
 MODEL = None
@@ -63,23 +64,22 @@ def infer(data):
     sos = butter(3, [0.7,3.0], btype='bandpass', fs=fs, output='sos')
     pulse = sosfiltfilt(sos,pulse)
     pulse = (pulse - np.mean(pulse))/(np.std(pulse)+1e-9)
-    # Se analiza la mitad final para priorizar señal reciente.
-    n = min(len(pulse), int(15*fs))
-    y = pulse[-n:]
-    freq = np.fft.rfftfreq(n, 1/fs)
-    power = abs(np.fft.rfft(y * np.hanning(n)))**2
-    valid = (freq>=0.75)&(freq<=3.)
-    if not np.any(valid) or not np.isfinite(power).all():
-        raise ValueError('Espectro no válido')
-    idx = np.where(valid)[0][int(np.argmax(power[valid]))]
-    peak_frac = float(power[max(idx-1,0):idx+2].sum()/(power[valid].sum()+1e-12))
-    bpm = float(freq[idx]*60)
-    if peak_frac < 0.18:
-        return {'status':'no_evaluable','reason':'Pico pulsátil demasiado débil/ambiguo', 'bpm':None,'sbp':None,'dbp':None,'peak_fraction':round(peak_frac,3),'fps':round(fs_real,1)}
+    # VitaSense-inspired approach: interpolated spectral peak and temporal agreement.
+    # Requiring 18 s reduces harmonic switches but increases warm-up latency.
+    hr = estimate_hr(pulse, fs)
+    peak_frac = hr.peak_fraction
+    if hr.bpm is None:
+        return {'status':'no_evaluable', 'reason':hr.reason, 'bpm':None,
+                'sbp':None, 'dbp':None, 'peak_fraction':round(peak_frac,3),
+                'snr_db':round(hr.snr_db,2) if math.isfinite(hr.snr_db) else None,
+                'agreement_bpm':round(hr.agreement_bpm,1) if hr.agreement_bpm is not None else None,
+                'fps':round(fs_real,1)}
+    bpm = hr.bpm
     caution = ('LOW FPS MODE (experimental): ~8 FPS; BP inference is NOT validated and can be unreliable. ' if low_fps else '')
     result={'status':'experimental_low_fps' if low_fps else 'experimental','reason':caution+'Estimación rPPG no validada; no utilizar clínicamente',
         'bpm':round(bpm,1),'peak_fraction':round(peak_frac,3),'fps':round(fs_real,1),
-        'seconds':round(elapsed,1),'low_fps':low_fps,'sbp':None,'dbp':None,'bp_status':MODEL_STATUS,
+        'seconds':round(elapsed,1),'snr_db':round(hr.snr_db,2),
+        'agreement_bpm':round(hr.agreement_bpm,1), 'low_fps':low_fps,'sbp':None,'dbp':None,'bp_status':MODEL_STATUS,
         'waveform':np.round(pulse[-min(len(pulse),240):],3).tolist(), 'model_loaded':MODEL is not None}
     if MODEL is not None:
         try:

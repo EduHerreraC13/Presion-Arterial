@@ -27,7 +27,7 @@ const $=id=>document.getElementById(id);const video=$('video'),canvas=$('overlay
 const SAMPLE_WIDTH=480;const SAMPLE_HEIGHT=270;
 scratch.width=SAMPLE_WIDTH;scratch.height=SAMPLE_HEIGHT;
 
-let model=null,stream=null,on=false,lastFrame=-1,lastSample=0,lastPost=0,busy=false,samples=[],generation=0;
+let model=null,stream=null,on=false,lastFrame=-1,lastSample=0,lastPost=0,busy=false,samples=[],generation=0,previousFace=null;
 const status=s=>$('status').textContent=s;
 const i18n=(en,es)=>window.HEAMONi18n?.language==='es'?es:en;
 const calculating=()=>i18n('Calculating…','Calculando…');
@@ -77,8 +77,8 @@ document.addEventListener('heamon-language-changed',()=>{
 });
 
 async function setup(){const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');model=await FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'CPU'},runningMode:'VIDEO',numFaces:1});}
-$('start').onclick=async()=>{const g=++generation;$('start').disabled=true;status(i18n('Loading face detection and requesting camera access…','Cargando detección facial y solicitando acceso a cámara…'));try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];lastSample=0;lastPost=0;setInitialReadings();$('stop').disabled=false;status(i18n('Detecting forehead and cheeks; collecting signal…','Detectando frente y pómulos; reuniendo señal…'));requestAnimationFrame(loop);}catch(e){status(i18n('Unable to start: ','No se pudo iniciar: ')+e.message);$('start').disabled=false;}};
-$('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];resetTracker();ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status(i18n('Capture stopped.','Captura detenida.'));};
+$('start').onclick=async()=>{const g=++generation;$('start').disabled=true;status(i18n('Loading face detection and requesting camera access…','Cargando detección facial y solicitando acceso a cámara…'));try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];previousFace=null;lastSample=0;lastPost=0;setInitialReadings();$('stop').disabled=false;status(i18n('Detecting forehead and cheeks; collecting signal…','Detectando frente y pómulos; reuniendo señal…'));requestAnimationFrame(loop);}catch(e){status(i18n('Unable to start: ','No se pudo iniciar: ')+e.message);$('start').disabled=false;}};
+$('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];previousFace=null;resetTracker();ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status(i18n('Capture stopped.','Captura detenida.'));};
 async function send(){
   if(busy||samples.length<90)return;
   busy=true;
@@ -206,9 +206,12 @@ function loop(now){
   let face=null;
   try{face=model.detectForVideo(video,now).faceLandmarks[0];}catch(e){status('Error del detector: '+e.message);return;}
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!face){samples=[];resetTracker();$('progress').style.width='0%';setInitialReadings();status(i18n('No face detected: face the camera.','Rostro no detectado: mira la cámara de frente.'));return;}
+  if(!face){samples=[];previousFace=null;resetTracker();$('progress').style.width='0%';setInitialReadings();status(i18n('No face detected: face the camera.','Rostro no detectado: mira la cámara de frente.'));return;}
   sc.drawImage(video,0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT);
   const pixels=sc.getImageData(0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT).data;
+  // Smooth facial landmarks, not RGB pulse values: reduce ROI edge jitter without flattening the pulse.
+  if(previousFace&&previousFace.length===face.length){const a=0.55;face=face.map((p,i)=>({x:a*p.x+(1-a)*previousFace[i].x,y:a*p.y+(1-a)*previousFace[i].y}));}
+  previousFace=face.map(p=>({x:p.x,y:p.y}));
   const regions=makeRegions(face);
   const values=regions.map(r=>r.enabled?measurePolygon(pixels,r.poly):null);
   regions.forEach((r,i)=>drawRegion(r.poly,Boolean(values[i])));
@@ -221,10 +224,10 @@ function loop(now){
   samples.push({t:now/1000,rgb});
   while(samples.length&&samples[0].t<now/1000-24)samples.shift();
   const duration=samples.at(-1).t-samples[0].t;
-  $('progress').style.width=Math.min(duration/12*100,100)+'%';
+  $('progress').style.width=Math.min(duration/18*100,100)+'%';
   const frontal=values.slice(0,15).filter(Boolean).length,cheeks=values.slice(15).filter(Boolean).length;
-  status(i18n('Automatic capture: ','Captura automática: ')+duration.toFixed(1)+i18n(' s of signal. Forehead ',' s de señal. Frente ')+frontal+'/15 · '+i18n('cheeks ','pómulos ')+cheeks+'/4 ('+valid+'/19). '+(duration<12?i18n('Keep still.','Mantente quieto.'):i18n('Analyzing pulse quality…','Analizando calidad del pulso…')));
-  if(duration>=12&&samples.length>=90&&now-lastPost>2500){lastPost=now;send();}
+  status(i18n('Automatic capture: ','Captura automática: ')+duration.toFixed(1)+i18n(' s of signal. Forehead ',' s de señal. Frente ')+frontal+'/15 · '+i18n('cheeks ','pómulos ')+cheeks+'/4 ('+valid+'/19). '+(duration<18?i18n('Keep still.','Mantente quieto.'):i18n('Analyzing pulse quality…','Analizando calidad del pulso…')));
+  if(duration>=18&&samples.length>=90&&now-lastPost>2500){lastPost=now;send();}
 }
 window.addEventListener('message', e => { if(e.origin!==location.origin || e.source!==parent) return; if(e.data?.type==='HEAMON_START'&&!on) $('start').click(); if(e.data?.type==='HEAMON_STOP'&&on) $('stop').click(); });
 </script></body></html>
