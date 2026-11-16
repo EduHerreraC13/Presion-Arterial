@@ -688,6 +688,7 @@ function exportRespAssessment(){
   const es=window.HEAMONi18n?.language==='es';
   const T=window.YanqhayPDF;if(!T)return;
   const fmt=(v,d=1,unit='')=>Number.isFinite(v)?v.toFixed(d)+unit:'—';
+  const category=level=>es?level:({'Óptimo':'Optimal','Bueno':'Good','Vigilancia':'Monitor','Riesgo':'Elevated','Crítico':'Critical'}[level]||level);
   const signs=[
     [es?'Pestañeos (ventana)':'Blinks (window)',fmt(res.m.blinks,0)],
     [es?'Frecuencia de pestañeo':'Blink rate',fmt(res.m.blinkRate,1,' /min')],
@@ -716,7 +717,6 @@ function exportRespAssessment(){
     'Índice experimental':'Experimental index',
     'RGB periocular (contextual, fuera del índice)':'Periocular RGB (context)'
   };
-  const category=level=>es?level:({'Óptimo':'Optimal','Bueno':'Good','Vigilancia':'Monitor','Riesgo':'Elevated','Crítico':'Critical'}[level]||level);
   const comparison=ROWS.map(row=>{
     const cur=row.get(res),old=prev?row.get(prev):null;
     const delta=Number.isFinite(cur)&&Number.isFinite(old)
