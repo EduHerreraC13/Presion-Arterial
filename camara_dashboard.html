@@ -24,35 +24,125 @@
 import {FaceLandmarker,FilesetResolver} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 const $=id=>document.getElementById(id);const video=$('video'),canvas=$('overlay'),ctx=canvas.getContext('2d'),scratch=document.createElement('canvas'),sc=scratch.getContext('2d',{willReadFrequently:true});
 // Muestreo de las regiones faciales a resolución reducida: no cambia el muestreo temporal.
-const SAMPLE_WIDTH=320;const SAMPLE_HEIGHT=180;
+const SAMPLE_WIDTH=480;const SAMPLE_HEIGHT=270;
 scratch.width=SAMPLE_WIDTH;scratch.height=SAMPLE_HEIGHT;
 
 let model=null,stream=null,on=false,lastFrame=-1,lastSample=0,lastPost=0,busy=false,samples=[],generation=0;
 const status=s=>$('status').textContent=s;
+const i18n=(en,es)=>window.HEAMONi18n?.language==='es'?es:en;
+const calculating=()=>i18n('Calculating…','Calculando…');
+const unavailable=()=>i18n('Not available','No disponible');
+let tracker={accepted:null,history:[],pending:null};
+function resetTracker(){tracker={accepted:null,history:[],pending:null};}
+function median(values){const a=[...values].sort((x,y)=>x-y),mid=Math.floor(a.length/2);return a.length%2?a[mid]:(a[mid-1]+a[mid])/2;}
+// Evita que un pico armónico aislado sustituya un pulso previamente coherente.
+// No recorta un cambio real: solicita confirmación si la discrepancia es grande.
+function trackBpm(candidate,quality,at){
+  const old=tracker.accepted;
+  if(!Number.isFinite(candidate)||!Number.isFinite(quality)||quality<0.22){
+    tracker.pending=null;
+    return {kind:'unreliable',value:old&&at-old.at<=8000?old.bpm:null};
+  }
+  const bpm=Number(candidate);
+  if(!old||at-old.at>12000){
+    tracker.history=[{bpm,at}];tracker.accepted={bpm,at};tracker.pending=null;
+    return {kind:'accepted',value:bpm};
+  }
+  const jump=Math.abs(bpm-old.bpm),limit=Math.max(18,0.18*old.bpm);
+  if(jump>limit){
+    const pending=tracker.pending;
+    if(pending&&at-pending.at<8500&&Math.abs(pending.bpm-bpm)<=12){
+      // Un segundo candidato compatible permite cambios cardíacos reales.
+      tracker.history=[{bpm:pending.bpm,at:pending.at},{bpm,at}];
+      tracker.accepted={bpm:median(tracker.history.map(v=>v.bpm)),at};
+      tracker.pending=null;
+      return {kind:'accepted',value:tracker.accepted.bpm};
+    }
+    tracker.pending={bpm,at};
+    return {kind:'verifying',value:at-old.at<=8000?old.bpm:null};
+  }
+  tracker.pending=null;
+  tracker.history=tracker.history.filter(v=>at-v.at<=11000);
+  tracker.history.push({bpm,at});tracker.history=tracker.history.slice(-5);
+  const stable=median(tracker.history.map(v=>v.bpm));
+  tracker.accepted={bpm:stable,at};
+  return {kind:'accepted',value:stable};
+}
+function setInitialReadings(){resetTracker();$('bpm').textContent=calculating();$('quality').textContent='—';$('sbp').textContent=calculating();$('dbp').textContent=calculating();}
+document.addEventListener('heamon-language-changed',()=>{
+  if(!on)return;
+  if($('bpm').dataset.pending==='true')$('bpm').textContent=calculating();
+  if($('sbp').dataset.pending==='true')$('sbp').textContent=calculating();
+  if($('dbp').dataset.pending==='true')$('dbp').textContent=calculating();
+});
 
 async function setup(){const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');model=await FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'CPU'},runningMode:'VIDEO',numFaces:1});}
-$('start').onclick=async()=>{const g=++generation;$('start').disabled=true;status('Cargando detección facial y solicitando acceso a cámara…');try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];lastSample=0;lastPost=0;$('stop').disabled=false;status('Detectando frente y pómulos; reuniendo señal…');requestAnimationFrame(loop);}catch(e){status('No se pudo iniciar: '+e.message);$('start').disabled=false;}};
-$('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status('Captura detenida.');};
-async function send(){if(busy||samples.length<90)return;busy=true;try{const windowSamples=samples.slice(-450);const resp=await fetch('/api/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timestamps:windowSamples.map(x=>x.t),rgb:windowSamples.map(x=>x.rgb)})});const r=await resp.json();if(!on)return;$('bpm').textContent=r.bpm==null?'—':r.bpm.toFixed(0);$('quality').textContent=r.peak_fraction==null?'—':(100*r.peak_fraction).toFixed(0)+' %';$('sbp').textContent=r.sbp==null?'No disp.':r.sbp.toFixed(0)+'*';$('dbp').textContent=r.dbp==null?'No disp.':r.dbp.toFixed(0)+'*';$('reason').textContent=[r.reason,r.bp_status].filter(Boolean).join(' · ');$('fps').textContent=r.fps?'Muestreo efectivo: '+r.fps+' fps':'';if(r.waveform)draw(r.waveform);}catch(e){if(on){$('reason').textContent='Error al contactar servidor Python: '+e.message;}}finally{busy=false;}}
+$('start').onclick=async()=>{const g=++generation;$('start').disabled=true;status(i18n('Loading face detection and requesting camera access…','Cargando detección facial y solicitando acceso a cámara…'));try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];lastSample=0;lastPost=0;setInitialReadings();$('stop').disabled=false;status(i18n('Detecting forehead and cheeks; collecting signal…','Detectando frente y pómulos; reuniendo señal…'));requestAnimationFrame(loop);}catch(e){status(i18n('Unable to start: ','No se pudo iniciar: ')+e.message);$('start').disabled=false;}};
+$('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];resetTracker();ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status(i18n('Capture stopped.','Captura detenida.'));};
+async function send(){
+  if(busy||samples.length<90)return;
+  busy=true;
+  try{
+    const windowSamples=samples.slice(-450);
+    const resp=await fetch('/api/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timestamps:windowSamples.map(x=>x.t),rgb:windowSamples.map(x=>x.rgb)})});
+    if(!resp.ok)throw new Error(`HTTP ${resp.status}`);
+    const r=await resp.json();if(!on)return;
+    const tracked=trackBpm(r.bpm,r.peak_fraction,performance.now());
+    const fresh=tracked.kind==='accepted';
+    $('bpm').dataset.pending=String(tracked.value==null);
+    $('bpm').textContent=tracked.value==null?calculating():tracked.value.toFixed(0)+(fresh?'':' ·');
+    $('quality').textContent=r.peak_fraction==null?'—':(100*r.peak_fraction).toFixed(0)+' %';
+    // Solo publicar presión inferida de señal aceptada en esta respuesta; nunca
+    // vincularla a un BPM que ha sido retenido por el filtro de presentación.
+    const bpFresh=fresh&&r.sbp!=null&&r.dbp!=null;
+    $('sbp').dataset.pending=String(!bpFresh);
+    $('dbp').dataset.pending=String(!bpFresh);
+    $('sbp').textContent=bpFresh?r.sbp.toFixed(0)+'*':calculating();
+    $('dbp').textContent=bpFresh?r.dbp.toFixed(0)+'*':calculating();
+    const state=tracked.kind==='verifying'
+      ?i18n('Verifying sudden BPM change; previous value shown briefly (·).','Verificando un salto de BPM; se muestra brevemente el valor anterior (·).')
+      :tracked.kind==='unreliable'
+        ?i18n('Pulse signal weak or ambiguous; calculating again.','Señal pulsátil débil o ambigua; recalculando.')
+        :i18n('Experimental rPPG signal; not a clinical measurement.','Señal rPPG experimental; no es una medición clínica.');
+    $('reason').textContent=state+(bpFresh?' · '+i18n('BP estimate is experimental.','Estimación de presión experimental.'):'');
+    $('fps').textContent=r.fps?i18n('Effective sampling: ','Muestreo efectivo: ')+r.fps+' fps':'';
+    if(r.waveform)draw(r.waveform);
+  }catch(e){if(on){$('reason').textContent=i18n('Unable to contact Python server: ','Error al contactar servidor Python: ')+e.message;}}
+  finally{busy=false;}
+}
 function draw(a){const c=$('wave'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);g.strokeStyle='#7fd3cb';g.lineWidth=2;g.beginPath();a.forEach((v,i)=>{const x=10+i/(a.length-1)*(w-20),y=h/2-v*22;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();}
-// 6 subregiones de frente + 2 de cada pómulo; no se importa ningún estimador de otras ramas.
+// Únicamente captura: 5 x 3 celdas de frente + 2 de cada pómulo.
+// Anclar la malla al ancho REAL de la cara, no al pequeño segmento entre cejas.
 function makeRegions(face){
-  const pt=(i)=>[face[i].x,face[i].y];
-  const minX=Math.min(face[107].x,face[336].x)+.006;
-  const maxX=Math.max(face[107].x,face[336].x)-.006;
-  const top=face[10].y+.012;
-  const bottom=Math.min(face[107].y,face[336].y)-.011;
+  const pt=i=>[face[i].x,face[i].y];
   const regions=[];
-  if(maxX-minX>.05&&bottom-top>.018){
-    for(let row=0;row<2;row++)for(let col=0;col<3;col++){
-      const left=minX+(maxX-minX)*(col/3)+.002;
-      const right=minX+(maxX-minX)*((col+1)/3)-.002;
-      const ytop=top+(bottom-top)*(row/2)+.002;
-      const ybottom=top+(bottom-top)*((row+1)/2)-.002;
-      regions.push({group:'forehead',poly:[[left,ytop],[right,ytop],[right,ybottom],[left,ybottom]]});
+  const faceWidth=Math.abs(face[454].x-face[234].x);
+  const faceHeight=Math.abs(face[152].y-face[10].y);
+  const centerX=(face[234].x+face[454].x)/2;
+  // Topo de la malla (MediaPipe 10), borde inferior inmediatamente sobre las cejas.
+  const top=face[10].y+0.018*faceHeight;
+  const browY=Math.min(face[70].y,face[300].y,face[105].y,face[334].y);
+  const bottom=Math.min(browY-0.018*faceHeight,top+0.29*faceHeight);
+  const height=bottom-top;
+  const validForehead=faceWidth>0.10&&faceHeight>0.10&&height>0.065*faceHeight;
+  const rows=3,cols=5;
+  for(let row=0;row<rows;row++){
+    const y0=top+height*row/rows,y1=top+height*(row+1)/rows;
+    // La zona alta es ligeramente más angosta que la próxima a las cejas.
+    const half0=(0.68+0.09*row/rows)*faceWidth/2;
+    const half1=(0.68+0.09*(row+1)/rows)*faceWidth/2;
+    for(let col=0;col<cols;col++){
+      const insetX=0.0025*faceWidth,insetY=0.0015*faceHeight;
+      const poly=[
+        [centerX-half0+2*half0*col/cols+insetX,y0+insetY],
+        [centerX-half0+2*half0*(col+1)/cols-insetX,y0+insetY],
+        [centerX-half1+2*half1*(col+1)/cols-insetX,y1-insetY],
+        [centerX-half1+2*half1*col/cols+insetX,y1-insetY]
+      ];
+      regions.push({group:'forehead',enabled:validForehead&&poly.every(([x,y])=>x>0&&x<1&&y>0&&y<1),poly});
     }
   }
-  // Los vértices siguen la malla facial. Cada mejilla está dividida en dos sectores.
+  // Conservar los mismos cuatro polígonos de pómulos del ZIP original.
   const cheeks=[
     [pt(117),pt(118),pt(101),pt(205),pt(187),pt(123)],
     [pt(346),pt(347),pt(330),pt(425),pt(411),pt(352)]
@@ -60,9 +150,8 @@ function makeRegions(face){
   for(let side=0;side<cheeks.length;side++){
     const poly=cheeks[side];
     const center=poly.reduce((a,p)=>[a[0]+p[0]/poly.length,a[1]+p[1]/poly.length],[0,0]);
-    // Dos polígonos por mejilla, compartiendo el centro; evitan un único promedio de zona grande.
-    regions.push({group:side===0?'left':'right',poly:[poly[0],poly[1],poly[2],center,poly[5]]});
-    regions.push({group:side===0?'left':'right',poly:[poly[2],poly[3],poly[4],poly[5],center]});
+    regions.push({group:side===0?'left':'right',enabled:true,poly:[poly[0],poly[1],poly[2],center,poly[5]]});
+    regions.push({group:side===0?'left':'right',enabled:true,poly:[poly[2],poly[3],poly[4],poly[5],center]});
   }
   return regions;
 }
@@ -88,7 +177,7 @@ function measurePolygon(img,polygon){
     if(Math.min(r,g,b)<8||Math.max(r,g,b)>248){sat++;continue;}
     accum[0]+=r;accum[1]+=g;accum[2]+=b;count++;
   }
-  if(count<8||sat>count*.8)return null;
+  if(count<12||sat>count*.8)return null;
   return accum.map(v=>v/count);
 }
 function combineRegions(regions,values){
@@ -100,7 +189,7 @@ function combineRegions(regions,values){
       groupMeans[group]=[0,1,2].map(c=>{const v=val.map(x=>x[c]).sort((a,b)=>a-b);return v[Math.floor(v.length/2)];});
     }
   }
-  const weights={forehead:0.5,left:0.25,right:0.25};
+  const weights={forehead:0.6,left:0.2,right:0.2};
   const available=Object.keys(groupMeans),total=available.reduce((v,g)=>v+weights[g],0);
   if(!available.length)return null;
   return [0,1,2].map(c=>available.reduce((v,g)=>v+weights[g]*groupMeans[g][c],0)/total);
@@ -117,23 +206,24 @@ function loop(now){
   let face=null;
   try{face=model.detectForVideo(video,now).faceLandmarks[0];}catch(e){status('Error del detector: '+e.message);return;}
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!face){samples=[];$('progress').style.width='0%';status('Rostro no detectado: mira la cámara de frente.');return;}
+  if(!face){samples=[];resetTracker();$('progress').style.width='0%';setInitialReadings();status(i18n('No face detected: face the camera.','Rostro no detectado: mira la cámara de frente.'));return;}
   sc.drawImage(video,0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT);
   const pixels=sc.getImageData(0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT).data;
   const regions=makeRegions(face);
-  const values=regions.map(r=>measurePolygon(pixels,r.poly));
+  const values=regions.map(r=>r.enabled?measurePolygon(pixels,r.poly):null);
   regions.forEach((r,i)=>drawRegion(r.poly,Boolean(values[i])));
   const rgb=combineRegions(regions,values);
   const valid=values.filter(Boolean).length;
-  if(!rgb||valid<3){
-    samples=[];$('progress').style.width='0%';
-    status('Rostro insuficientemente visible: ajusta iluminación, frente y pómulos.');return;
+  if(!rgb||valid<4){
+    samples=[];resetTracker();$('progress').style.width='0%';setInitialReadings();
+    status(i18n('Insufficient facial coverage; improve lighting and uncover your forehead.','Cobertura facial insuficiente; mejora la luz y despeja la frente.'));return;
   }
   samples.push({t:now/1000,rgb});
   while(samples.length&&samples[0].t<now/1000-24)samples.shift();
   const duration=samples.at(-1).t-samples[0].t;
   $('progress').style.width=Math.min(duration/12*100,100)+'%';
-  status('Captura automática: '+duration.toFixed(1)+' s de señal. '+valid+'/'+regions.length+' polígonos útiles. '+(duration<12?'Mantente quieto.':'Analizando…'));
+  const frontal=values.slice(0,15).filter(Boolean).length,cheeks=values.slice(15).filter(Boolean).length;
+  status(i18n('Automatic capture: ','Captura automática: ')+duration.toFixed(1)+i18n(' s of signal. Forehead ',' s de señal. Frente ')+frontal+'/15 · '+i18n('cheeks ','pómulos ')+cheeks+'/4 ('+valid+'/19). '+(duration<12?i18n('Keep still.','Mantente quieto.'):i18n('Analyzing pulse quality…','Analizando calidad del pulso…')));
   if(duration>=12&&samples.length>=90&&now-lastPost>2500){lastPost=now;send();}
 }
 window.addEventListener('message', e => { if(e.origin!==location.origin || e.source!==parent) return; if(e.data?.type==='HEAMON_START'&&!on) $('start').click(); if(e.data?.type==='HEAMON_STOP'&&on) $('stop').click(); });
