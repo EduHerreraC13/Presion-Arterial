@@ -26,7 +26,7 @@ LOW_FPS_MODE = False
 INFERENCE_SLOTS = threading.BoundedSemaphore(value=2)
 PUBLIC_ASSETS = frozenset({
     '/index.html', '/camara_dashboard.html', '/fatiga_respiracion.html',
-    '/heamon_i18n.js', '/favicon.ico',
+    '/heamon_i18n.js', '/anthropometry.html', '/anthropometry-i18n.js', '/favicon.ico',
 })
 
 def infer(data):
