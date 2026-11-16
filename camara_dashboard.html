@@ -111,7 +111,19 @@ function chooseSpectralValue(r,now){
   const old=spectralTrack.accepted;
   if(!good)return old&&now-old.time<8000?{state:'held',value:old.bpm}:{state:'unavailable',value:null};
   const candidate=r.bpm;
-  if(old&&now-old.time<12000&&Math.abs(candidate-old.bpm)>18){
+  // Do not promote the first isolated peak immediately to a displayed BPM.
+  // Two nearby quality-gated estimates must agree at acquisition start.
+  if(!old||now-old.time>=12000){
+    const p=spectralTrack.pending;
+    if(!p||now-p.time>7000||Math.abs(p.bpm-candidate)>12){
+      spectralTrack.pending={bpm:candidate,time:now};
+      return {state:'verifying',value:null};
+    }
+    spectralTrack.pending=null;
+    spectralTrack.accepted={bpm:candidate,time:now};
+    return {state:r.hr_state,value:candidate};
+  }
+  if(Math.abs(candidate-old.bpm)>18){
     const p=spectralTrack.pending;
     if(!p||now-p.time>7000||Math.abs(p.bpm-candidate)>10){
       spectralTrack.pending={bpm:candidate,time:now};
