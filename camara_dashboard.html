@@ -12,10 +12,37 @@
 .comp-pointer{position:absolute;top:-5px;width:3px;height:18px;background:#fff;box-shadow:0 0 0 2px #07111a;border-radius:5px;left:0;display:none}
 .compare-foot{font-size:.89rem;color:var(--mut);margin:16px 0 0}
 .source-list a{color:#8ddbd5;overflow-wrap:anywhere}
+.monitor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+@media(max-width:800px){.monitor-grid{grid-template-columns:1fr}}
+.monitor-grid .card{min-width:0}
+.monitor-help{font-size:.85rem;color:var(--mut);margin:0 0 12px}
+.monitor-meta{margin-top:10px;min-height:40px;color:var(--mut);font-size:.85rem}
+.monitor-live{border-color:#4e7184}.monitor-median{border-color:#5a877e}
 </style></head><body><main>
 <div class="top"><div><h1>Monitoreo cardiovascular</h1><p style="margin:5px 0">rPPG experimental · Dashboard conectado a cámara · Sin entradas manuales</p></div><span class="tag">Investigación · No es un dispositivo médico</span></div>
 <div class="layout"><section class="card"><h2>Captura en vivo</h2><div class="cam"><video id="video" autoplay playsinline muted></video><canvas id="overlay"></canvas></div><div class="buttons"><button id="start">Activar cámara</button><button id="stop" class="secondary" disabled>Detener</button></div><div class="bar"><i id="progress"></i></div><p id="status" role="status" aria-live="polite">Cámara desactivada. Colócate frente a ella con iluminación estable y minimiza el movimiento.</p><small>Para rPPG se envía al servidor un promedio RGB combinado de regiones de frente y pómulos, junto con sus tiempos; no se transmiten fotogramas en este módulo. Necesita internet inicialmente para descargar MediaPipe.</small></section>
-<section class="card"><h2>Resultados de la cámara</h2><div class="metrics"><div class="metric"><b id="bpm">—</b><span>Frecuencia cardíaca (lpm), experimental</span></div><div class="metric"><b id="quality">—</b><span>Concentración del pico espectral (no es exactitud)</span></div><div class="metric"><b id="sbp">No disp.</b><span>Sistólica (mmHg) · DL experimental</span></div><div class="metric"><b id="dbp">No disp.</b><span>Diastólica (mmHg) · DL experimental</span></div></div><p id="reason" class="mut">Para habilitar PAS/PAD, descarga el checkpoint original del estudio y carga el servidor con --fabian-model. No equivale a medición clínica.</p><p class="mut" id="fps"></p></section></div>
+<section class="card monitor-live">
+<h2>Monitoreo en tiempo real</h2>
+<p class="monitor-help">Lecturas experimentales de la cámara, actualizadas aproximadamente cada 2 segundos tras reunir señal suficiente. Pueden fluctuar.</p>
+<div class="metrics">
+<div class="metric"><b id="bpm">—</b><span>Frecuencia cardíaca (lpm) · en vivo</span></div>
+<div class="metric"><b id="quality">—</b><span>Concentración espectral (%) · no indica exactitud</span></div>
+<div class="metric"><b id="sbp">—</b><span>Presión sistólica (mmHg) · experimental</span></div>
+<div class="metric"><b id="dbp">—</b><span>Presión diastólica (mmHg) · experimental</span></div>
+</div>
+<p id="reason" class="monitor-meta">Inicia la cámara para comenzar.</p><p class="mut" id="fps"></p>
+</section></div>
+<section class="card full monitor-median">
+<h2>Monitoreo estimado · mediana cada 15 segundos</h2>
+<p class="monitor-help">Se calcula la mediana de las lecturas válidas recibidas durante cada intervalo de 15 segundos. No es una medición independiente ni garantiza mayor exactitud.</p>
+<div class="metrics">
+<div class="metric"><b id="medianBpm">—</b><span>Mediana de frecuencia cardíaca (lpm)</span></div>
+<div class="metric"><b id="medianQuality">—</b><span>Mediana de concentración espectral (%)</span></div>
+<div class="metric"><b id="medianSbp">—</b><span>Mediana de sistólica (mmHg)</span></div>
+<div class="metric"><b id="medianDbp">—</b><span>Mediana de diastólica (mmHg)</span></div>
+</div>
+<p class="monitor-meta" id="medianStatus">Primer resumen después de 15 segundos de lecturas.</p>
+</section>
 <section class="card full"><h2>Señal rPPG procesada</h2><canvas id="wave" width="960" height="150"></canvas><small>Amplitud normalizada arbitraria; no representa presión en mmHg. Se actualiza automáticamente después de obtener una ventana válida.</small></section>
 <section class="card full"><h2>Alcance y limitaciones</h2><p>La cámara permite extraer variaciones ópticas relacionadas con pulso, pero no constituye un tensiómetro. La predicción de presión arterial solo se habilita con un checkpoint compatible, previamente entrenado. Incluso entonces se mostrará como <b>inferencia experimental no calibrada ni validada</b>, no como medición ni aptitud clínica.</p><p>Los indicadores MAE, ME, desviación, correlación y cumplimiento de normas pertenecen a la evaluación de un modelo contra presiones de referencia, y <b>no pueden calcularse desde una webcam sin etiquetas reales</b>. El dashboard original del repositorio se conserva para consultar esos experimentos.</p></section>
 </main>
@@ -33,93 +60,73 @@ const i18n=(en,es)=>window.HEAMONi18n?.language==='es'?es:en;
 const calculating=()=>i18n('Calculating…','Calculando…');
 const unavailable=()=>i18n('Not available','No disponible');
 // Keep the last valid reading visible with an explicit status; never present stale data as fresh.
-let tracker={accepted:null,pending:null,history:[],provisional:[]};
-function resetTracker(){tracker={accepted:null,pending:null,history:[],provisional:[]};}
-function median(values){const a=[...values].sort((x,y)=>x-y),mid=Math.floor(a.length/2);return a.length%2?a[mid]:(a[mid-1]+a[mid])/2;}
-function trackBpm(candidate,quality,kind,at){
-  const old=tracker.accepted;
-  if(!Number.isFinite(candidate)||!Number.isFinite(quality)||kind==='unavailable'){
-    if(old&&at-old.at<=10000)return {kind:'held',value:old.bpm};
-    return {kind:'unavailable',value:null};
+// Independent readout tracks. Median bins use newly returned readings only.
+const MEDIAN_PERIOD_MS=15000;
+let medianBatch=[],medianStarted=0,medianSequence=0;
+const numeric=v=>typeof v==='number'&&Number.isFinite(v);
+function median(values){const a=[...values].sort((x,y)=>x-y),n=a.length;return n?(n%2?a[(n-1)/2]:(a[n/2-1]+a[n/2])/2):null;}
+function numericMedian(key){return median(medianBatch.map(v=>v[key]).filter(numeric));}
+function clearMedian(){
+  medianBatch=[];medianStarted=0;medianSequence=0;
+  for(const id of ['medianBpm','medianQuality','medianSbp','medianDbp'])$(id).textContent='—';
+  $('medianStatus').textContent=i18n('First median after 15 seconds of readings.','Primera mediana tras 15 segundos de lecturas.');
+}
+function renderMedian(){
+  const vals=[['medianBpm','bpm',''],['medianQuality','quality',' %'],['medianSbp','sbp','*'],['medianDbp','dbp','*']];
+  for(const [id,key,suffix] of vals){
+    const v=numericMedian(key);
+    $(id).textContent=v==null?'—':v.toFixed(key==='quality'?0:0)+suffix;
   }
-  const bpm=Number(candidate);
-  if(kind==='provisional'){
-    // Provisional values are NEVER labeled as confirmed, even when visually smooth.
-    tracker.provisional=tracker.provisional.filter(v=>at-v.at<=7000);
-    tracker.provisional.push({bpm,at});tracker.provisional=tracker.provisional.slice(-3);
-    const preview=median(tracker.provisional.map(v=>v.bpm));
-    if(old&&at-old.at<=8000&&Math.abs(preview-old.bpm)>18)return {kind:'held',value:old.bpm};
-    return {kind:'provisional',value:old&&at-old.at<=6000?old.bpm:preview};
+  medianSequence++;
+  const count=medianBatch.length;
+  $('medianStatus').textContent=i18n('15-second summary #','Resumen de 15 segundos n.º ')+medianSequence+
+    ' · '+count+' '+i18n('camera readings. Missing values excluded for each metric.','lecturas de cámara. Se excluyen los valores ausentes de cada indicador.');
+}
+function addLiveReading(reading,at){
+  if(!medianStarted)medianStarted=at;
+  medianBatch.push(reading);
+  if(at-medianStarted>=MEDIAN_PERIOD_MS){
+    renderMedian();
+    medianBatch=[];medianStarted=at;
+  }else if(medianSequence===0){
+    $('medianStatus').textContent=i18n('Collecting readings for first median: ','Reuniendo lecturas para la primera mediana: ')+
+      Math.max(0,Math.ceil((MEDIAN_PERIOD_MS-(at-medianStarted))/1000))+' s';
   }
-  // Confirmed spectral result. Significant steps need a second consistent candidate.
-  if(old&&at-old.at<=12000&&Math.abs(bpm-old.bpm)>Math.max(18,old.bpm*.18)){
-    if(!tracker.pending||at-tracker.pending.at>8000||Math.abs(tracker.pending.bpm-bpm)>12){
-      tracker.pending={bpm,at};
-      return {kind:'verifying',value:at-old.at<=10000?old.bpm:null};
-    }
-  }
-  tracker.pending=null;
-  tracker.history=tracker.history.filter(v=>at-v.at<=10000);
-  tracker.history.push({bpm,at});tracker.history=tracker.history.slice(-5);
-  const stable=median(tracker.history.map(v=>v.bpm));
-  tracker.accepted={bpm:stable,at};
-  return {kind:'confirmed',value:stable};
 }
 function setInitialReadings(){
-  resetTracker();
-  $('bpm').textContent=i18n('Collecting…','Recolectando…');
-  $('quality').textContent='—';
-  $('sbp').textContent=unavailable();$('dbp').textContent=unavailable();
+  clearMedian();
+  for(const id of ['bpm','quality','sbp','dbp'])$(id).textContent='—';
+  $('reason').textContent=i18n('Collecting camera signal…','Reuniendo señal de cámara…');
 }
-document.addEventListener('heamon-language-changed',()=>{
-  if(!on)return;
-  if($('bpm').dataset.pending==='true')$('bpm').textContent=i18n('Collecting…','Recolectando…');
-  if($('sbp').dataset.pending==='true')$('sbp').textContent=unavailable();
-  if($('dbp').dataset.pending==='true')$('dbp').textContent=unavailable();
-});
-
 async function setup(){const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');model=await FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'CPU'},runningMode:'VIDEO',numFaces:1});}
 $('start').onclick=async()=>{const g=++generation;$('start').disabled=true;status(i18n('Loading face detection and requesting camera access…','Cargando detección facial y solicitando acceso a cámara…'));try{if(!model)await setup();if(g!==generation)return;stream=(window.parent!==window && window.parent.HEAMONCamera?.stream) || await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}},audio:false});video.srcObject=stream;await video.play();canvas.width=video.videoWidth;canvas.height=video.videoHeight;on=true;samples=[];previousFace=null;lastSample=0;lastPost=0;setInitialReadings();$('stop').disabled=false;status(i18n('Detecting forehead and cheeks; collecting signal…','Detectando frente y pómulos; reuniendo señal…'));requestAnimationFrame(loop);}catch(e){status(i18n('Unable to start: ','No se pudo iniciar: ')+e.message);$('start').disabled=false;}};
-$('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];previousFace=null;resetTracker();ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status(i18n('Capture stopped.','Captura detenida.'));};
+$('stop').onclick=()=>{generation++;on=false;if(!(window.parent!==window && window.parent.HEAMONCamera?.stream===stream)) stream?.getTracks().forEach(x=>x.stop());stream=null;samples=[];previousFace=null;medianBatch=[];medianStarted=0;ctx.clearRect(0,0,canvas.width,canvas.height);$('start').disabled=false;$('stop').disabled=true;$('progress').style.width='0%';status(i18n('Capture stopped.','Captura detenida.'));};
 async function send(){
   if(busy||samples.length<60)return;
-  busy=true;
-  const requestGeneration=generation;
+  busy=true;const requestGeneration=generation;
   try{
-    // IMPORTANT: 450 samples at 30 FPS were only 15 seconds and could never
-    // satisfy the backend's former 18-second confirmation requirement.
     const windowSamples=samples.slice(-800);
-    const resp=await fetch('/api/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timestamps:windowSamples.map(x=>x.t),rgb:windowSamples.map(x=>x.rgb)})});
+    const resp=await fetch('/api/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      mode:'live',timestamps:windowSamples.map(x=>x.t),rgb:windowSamples.map(x=>x.rgb)
+    })});
     if(!resp.ok)throw new Error('HTTP '+resp.status);
     const r=await resp.json();
     if(!on||requestGeneration!==generation)return;
-    const rawState=r.hr_state||'unavailable';
-    const tracked=trackBpm(r.bpm,r.peak_fraction,rawState,performance.now());
-    const fresh=tracked.kind==='confirmed';
-    $('bpm').dataset.pending=String(tracked.value==null);
-    $('bpm').textContent=tracked.value==null
-      ?i18n('Signal unavailable','Señal no disponible')
-      :tracked.value.toFixed(0)+(fresh?'':tracked.kind==='provisional'?' ~':' ·');
-    $('quality').textContent=r.peak_fraction==null?'—':(100*r.peak_fraction).toFixed(0)+' %';
-    // Never associate inferred blood pressure with retained or provisional BPM.
-    const bpFresh=fresh&&r.sbp!=null&&r.dbp!=null;
-    $('sbp').dataset.pending=String(!bpFresh);
-    $('dbp').dataset.pending=String(!bpFresh);
-    $('sbp').textContent=bpFresh?r.sbp.toFixed(0)+'*':unavailable();
-    $('dbp').textContent=bpFresh?r.dbp.toFixed(0)+'*':unavailable();
-    const state=tracked.kind==='confirmed'
-      ?i18n('Quality-confirmed experimental BPM.','BPM experimental confirmado por calidad.')
-      :tracked.kind==='provisional'
-        ?i18n('Early provisional BPM (~); awaiting stronger signal.','BPM provisional temprano (~); esperando mejor señal.')
-        :tracked.kind==='held'||tracked.kind==='verifying'
-          ?i18n('Showing previous BPM (·); current signal is not confirmed.','Mostrando BPM anterior (·); señal actual sin confirmar.')
-          :i18n('Low-quality signal: no reliable BPM available.','Señal de baja calidad: BPM no disponible.');
-    $('reason').textContent=state+' '+i18n('Not a clinical measurement.','No es una medición clínica.');
+    const live={bpm:numeric(r.bpm)?r.bpm:null,quality:numeric(r.peak_fraction)?r.peak_fraction*100:null,
+      sbp:numeric(r.sbp)?r.sbp:null,dbp:numeric(r.dbp)?r.dbp:null};
+    $('bpm').textContent=live.bpm==null?'—':live.bpm.toFixed(0);
+    $('quality').textContent=live.quality==null?'—':live.quality.toFixed(0)+' %';
+    $('sbp').textContent=live.sbp==null?'—':live.sbp.toFixed(0)+'*';
+    $('dbp').textContent=live.dbp==null?'—':live.dbp.toFixed(0)+'*';
+    $('reason').textContent=live.bpm==null
+      ?i18n('Signal unavailable; improve lighting and reduce movement.','Señal no disponible; mejora la iluminación y reduce el movimiento.')
+      :i18n('Live experimental estimate; may change between updates.','Estimación experimental en vivo; puede cambiar entre actualizaciones.');
     $('fps').textContent=r.fps?i18n('Effective sampling: ','Muestreo efectivo: ')+r.fps+' fps':'';
-    if(r.waveform)draw(r.waveform);
-  }catch(e){
-    if(on&&requestGeneration===generation)$('reason').textContent=i18n('Unable to contact Python server: ','Error al contactar servidor Python: ')+e.message;
-  }finally{busy=false;}
+    addLiveReading(live,performance.now());
+    if(Array.isArray(r.waveform))draw(r.waveform);
+  }catch(e){if(on&&requestGeneration===generation){
+    $('reason').textContent=i18n('Server error: ','Error del servidor: ')+e.message;
+  }}finally{busy=false;}
 }
 function draw(a){const c=$('wave'),g=c.getContext('2d'),w=c.width,h=c.height;g.clearRect(0,0,w,h);g.strokeStyle='#7fd3cb';g.lineWidth=2;g.beginPath();a.forEach((v,i)=>{const x=10+i/(a.length-1)*(w-20),y=h/2-v*22;i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();}
 // Únicamente captura: 5 x 3 celdas de frente + 2 de cada pómulo.
@@ -217,7 +224,7 @@ function loop(now){
   let face=null;
   try{face=model.detectForVideo(video,now).faceLandmarks[0];}catch(e){status('Error del detector: '+e.message);return;}
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!face){samples=[];previousFace=null;resetTracker();$('progress').style.width='0%';setInitialReadings();status(i18n('No face detected: face the camera.','Rostro no detectado: mira la cámara de frente.'));return;}
+  if(!face){samples=[];previousFace=null;$('progress').style.width='0%';$('reason').textContent=i18n('Face not visible; waiting for signal.','Rostro no visible; esperando señal.');status(i18n('No face detected: face the camera.','Rostro no detectado: mira la cámara de frente.'));return;}
   sc.drawImage(video,0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT);
   const pixels=sc.getImageData(0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT).data;
   // Smooth facial landmarks, not RGB pulse values: reduce ROI edge jitter without flattening the pulse.
@@ -229,7 +236,7 @@ function loop(now){
   const rgb=combineRegions(regions,values);
   const valid=values.filter(Boolean).length;
   if(!rgb||valid<4){
-    samples=[];resetTracker();$('progress').style.width='0%';setInitialReadings();
+    samples=[];$('progress').style.width='0%';$('reason').textContent=i18n('Face coverage insufficient; waiting for signal.','Cobertura facial insuficiente; esperando señal.');
     status(i18n('Insufficient facial coverage; improve lighting and uncover your forehead.','Cobertura facial insuficiente; mejora la luz y despeja la frente.'));return;
   }
   samples.push({t:now/1000,rgb});

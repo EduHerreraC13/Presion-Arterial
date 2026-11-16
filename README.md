@@ -99,28 +99,28 @@ Observe a pulse-related optical signal using **remote photoplethysmography (rPPG
 2. Start the shared camera from the top bar, or activate the camera inside the module.
 3. Face the camera and keep the **forehead and cheeks unobstructed**.
 4. Use relatively even, stable lighting and minimize unnecessary head movement.
-5. Allow the signal to accumulate. The application may show an **early provisional BPM** before a more quality-checked result is available.
-6. Read the BPM together with the signal-quality indicator and explanatory status. Continue observing trends instead of relying on an isolated number.
+5. Allow roughly **9 seconds** of usable signal to accumulate, then watch the **Live Monitoring** figures update approximately every 2 seconds.
+6. Compare the live readings with the **Estimated Monitoring — 15-second Median** panel. It refreshes after each 15-second group of received readings.
 7. Stop the camera when finished.
 
-### How the reading is produced
+### How the readings are produced
 
-YanqhayCare tracks multiple skin regions: **15 sectors across the forehead and four sectors across the cheekbones**. The system combines RGB information from usable regions, stabilizes facial landmark positions, and processes the resulting time series. A spectral heart-rate estimator then examines the pulse-related frequencies.
+YanqhayCare tracks multiple skin regions: **15 sectors across the forehead and four sectors across the cheekbones**. The system combines RGB information from usable regions, stabilizes facial landmark positions, and processes the resulting time series using an rPPG approach.
 
-To reconcile faster updates with more selective quality checks, the current implementation distinguishes:
+The cardiovascular screen now offers **two complementary readouts**:
 
-| Display | Meaning |
-| --- | --- |
-| `74 ~` | **Provisional:** an early experimental BPM estimate, not yet confirmed by the longer window |
-| `73` | **Quality-confirmed:** a result that passed the application's spectral consistency checks; not a clinical confirmation |
-| `73 ·` | **Held:** a previous reading temporarily retained while the current signal is being checked |
-| `Signal unavailable` | Not enough usable data to present a numeric reading |
+| Panel | Update interval | What it shows |
+| --- | --- | --- |
+| **Live Monitoring** | Approximately every **2 seconds**, after about **9 seconds** of usable signal | The latest experimental FFT-based heart-rate estimate, spectral peak concentration, and optional experimental systolic/diastolic blood-pressure estimates. These values can change noticeably from update to update. |
+| **Estimated Monitoring — 15-second Median** | One new summary for each **15-second** group of received live readings | Separately calculated medians of BPM, spectral peak concentration (%), systolic pressure, and diastolic pressure. Missing values are excluded from each metric. |
 
-These numbers are examples, not expected or guaranteed outputs.
+**How the median is calculated:** for every available numerical indicator, the application orders that interval's received values and selects the middle one (or the average of the two middle values when there is an even number). For example, BPM readings **80, 90, 120, 40, 50** produce a median of **80 BPM**. This makes the summary less sensitive to occasional extreme values, but **does not establish medical accuracy**.
 
-An early reading can appear after approximately **9 seconds** of suitable signal. Stronger confirmation may become possible from approximately **18 seconds** onward, although real timing depends on capture FPS, stability, and quality. The browser requests new estimates approximately every two seconds.
+The **percentage is spectral peak concentration**, a signal-characteristic indicator; it is **not oxygen saturation, confidence in a diagnosis, or percent accuracy**. The blood-pressure fields show a dash if the optional research checkpoint is unavailable or does not produce a usable estimate. The median does not fill in missing values with invented numbers.
 
-**Experimental blood pressure:** The cardiovascular panel may also show SBP/DBP if a compatible optional research model is configured. This model was trained on contact PPG data and is being applied experimentally to camera-derived signals. Its output is not equivalent to a cuff measurement and should not be used for clinical decisions.
+Because the live panel follows the fast, minimally gated FFT-style output of the earlier web implementation, it is expected to be more responsive and also **more variable**. The median provides a convenient temporal summary, not a more advanced or independent measurement. The previous quality-gated estimator remains available in the backend for research comparison; this dashboard uses live mode.
+
+**Experimental blood pressure:** SBP/DBP requires a compatible optional research checkpoint trained on contact PPG signals. Webcam-derived rPPG is a different modality, so these numbers are exploratory estimates and are not equivalent to a cuff measurement. No part of this feature should be used to diagnose a medical condition or make an operational safety decision.
 
 ---
 
