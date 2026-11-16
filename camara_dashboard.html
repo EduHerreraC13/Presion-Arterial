@@ -273,7 +273,7 @@ function loop(now){
   let face=null;
   try{face=model.detectForVideo(video,now).faceLandmarks[0];}catch(e){status('Error del detector: '+e.message);return;}
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!face){samples=[];previousFace=null;lastNose=null;spectralTrack.pending=null;$('progress').style.width='0%';$('reason').textContent=i18n('Face not visible; waiting for signal.','Rostro no visible; esperando señal.');status(i18n('No face detected: face the camera.','Rostro no detectado: mira la cámara de frente.'));return;}
+  if(!face){samples=[];previousFace=null;lastNose=null;spectralTrack={accepted:null,pending:null};$('progress').style.width='0%';$('reason').textContent=i18n('Face not visible; waiting for signal.','Rostro no visible; esperando señal.');status(i18n('No face detected: face the camera.','Rostro no detectado: mira la cámara de frente.'));return;}
   sc.drawImage(video,0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT);
   const pixels=sc.getImageData(0,0,SAMPLE_WIDTH,SAMPLE_HEIGHT).data;
   // Smooth facial landmarks, not RGB pulse values: reduce ROI edge jitter without flattening the pulse.
@@ -287,7 +287,9 @@ function loop(now){
     const relativeMove=Math.hypot(nose.x-lastNose.x,nose.y-lastNose.y)/faceWidth;
     if(relativeMove>MAX_MOTION_FACE_WIDTH){
       samples=[];lastPost=0;motionNoticeUntil=now+1200;
-      spectralTrack.pending=null;
+      spectralTrack={accepted:null,pending:null};
+      for(const id of ['bpm','quality','sbp','dbp'])$(id).textContent='—';
+      $('reason').textContent=i18n('Motion detected; restarting optical acquisition.','Movimiento detectado; reiniciando adquisición óptica.');
     }
   }
   lastNose={x:nose.x,y:nose.y};
