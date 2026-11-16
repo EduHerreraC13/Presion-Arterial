@@ -697,21 +697,36 @@ function exportRespAssessment(){
     [es?'Respiraciones (ventana)':'Breaths (window)',fmt(res.resp.breaths,0)],
     [es?'Respiraciones/min (si confiable)':'Breathing/min (when reliable)',
       res.resp.reliable?fmt(res.resp.ratePerMin,1):'—'],
-    [es?'Cobertura facial':'Face coverage',fmt(res.m.coverage*100,0,' %')],
+    [es?'Cobertura facial':'Face coverage',fmt(Number.isFinite(res.m.coverage)?res.m.coverage*100:null,0,' %')],
     [es?'Índice experimental':'Experimental index',fmt(res.dx.score,0,' /100')],
     [es?'Nivel de evaluación':'Assessment category',
-      res.dx.conclusivo?(res.dx.level?.name||'—'):(es?'No concluyente':'Inconclusive')]
+      res.dx.conclusivo?category(res.dx.level?.name||'—'):(es?'No concluyente':'Inconclusive')]
   ];
+  const reportLabels={
+    'Pestañeadas en la ventana':'Blinks in assessment',
+    'Frecuencia de pestañeo':'Blink rate',
+    'Cierre ocular medio (AECD)':'Average eye closure (AECD)',
+    'EAR medio':'Average EAR',
+    'Respiraciones en la ventana':'Breaths in assessment',
+    'Respiración por minuto (ritmo medido)':'Breathing per minute (measured rate)',
+    'Respiración por minuto (conteo × 60 / tiempo observado)':'Breathing per minute (count / observed time)',
+    'Inclinación roll (media absoluta)':'Mean absolute head roll',
+    'Movimiento de cabeza':'Head motion',
+    'Cobertura facial':'Face coverage',
+    'Índice experimental':'Experimental index',
+    'RGB periocular (contextual, fuera del índice)':'Periocular RGB (context)'
+  };
+  const category=level=>es?level:({'Óptimo':'Optimal','Bueno':'Good','Vigilancia':'Monitor','Riesgo':'Elevated','Crítico':'Critical'}[level]||level);
   const comparison=ROWS.map(row=>{
     const cur=row.get(res),old=prev?row.get(prev):null;
     const delta=Number.isFinite(cur)&&Number.isFinite(old)
       ?fmt(cur-old,row.dec):'—';
-    return [row.label,row.unit,fmt(cur,row.dec),fmt(old,row.dec),delta];
+    return [es?row.label:(reportLabels[row.label]||row.label),row.unit,fmt(cur,row.dec),fmt(old,row.dec),delta];
   });
   // Use actual completed records, not live-updated cards.
   const history=S.results.map(r=>[
     '#'+r.idx,r.when.toLocaleString(es?'es-PE':'en-US'),
-    fmt(r.dx.score,0),r.dx.conclusivo?(r.dx.level?.name||'—'):'Inconclusive',
+    fmt(r.dx.score,0),r.dx.conclusivo?category(r.dx.level?.name||'—'):(es?'No concluyente':'Inconclusive'),
     fmt(r.m.perclos),fmt(r.m.blinkRate),fmt(r.resp.breaths,0),
     r.resp.reliable?fmt(r.resp.ratePerMin):'—'
   ]);
@@ -896,7 +911,7 @@ function drawChart(t) {
   g.strokeStyle = '#ffffff12'; g.lineWidth = 1;
   for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, (H * i) / 4); g.lineTo(W, (H * i) / 4); g.stroke(); }
   g.fillStyle = '#a7bfd9'; g.font = '12px system-ui';
-  g.fillText('−60 s', 6, H - 6); g.fillText('ahora', W - 44, H - 6);
+  g.fillText('−60 s', 6, H - 6); g.fillText(window.HEAMONi18n?.language==='es'?'ahora':'now', W - 44, H - 6);
   if (!S.hist.length) return;
   const X = (ts) => ((ts - (t - 60000)) / 60000) * W;
   const yEar = (v) => H - 18 - clamp(v / 0.45, 0, 1) * (H - 30);
