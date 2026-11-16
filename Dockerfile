@@ -16,7 +16,7 @@ COPY requirements_web.txt ./
 RUN python -m pip install --no-cache-dir -r requirements_web.txt
 COPY servidor_camara.py descargar_checkpoint.py ./
 COPY presion_arterial/ ./presion_arterial/
-COPY index.html camara_dashboard.html fatiga_respiracion.html heamon_i18n.js ./
+COPY index.html camara_dashboard.html fatiga_respiracion.html heamon_i18n.js anthropometry.html anthropometry-i18n.js ./
 # Original research artifact is downloaded at build time, checksum checked.
 # This makes the checkpoint available without committing the pretrained weights to Git.
 ARG INCLUDE_BP_MODEL=1
