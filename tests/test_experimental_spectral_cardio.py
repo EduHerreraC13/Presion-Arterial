@@ -51,6 +51,8 @@ def test_face_rois_preserved_and_quality_gates_are_separate():
     assert "const weights={forehead:0.6,left:0.2,right:0.2}" in ui
     assert "MAX_MOTION_FACE_WIDTH" in ui
     assert "relativeMove>MAX_MOTION_FACE_WIDTH" in ui
+    assert "Motion detected; restarting optical acquisition." in ui
+    assert "spectralTrack={accepted:null,pending:null}" in ui
     assert "mode:'spectral_experimental'" in ui
     assert "function chooseSpectralValue(" in ui
     assert "Two nearby quality-gated estimates" in ui
